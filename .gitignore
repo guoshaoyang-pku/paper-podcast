@@ -4,10 +4,27 @@ extracted/
 __pycache__/
 .DS_Store
 
-# 音频走 Release 附件，不直接提交
-papers/*/audio/*.mp3
-papers/*/audio/*.wav
+# 音频：只提交 docs/*/audio/podcast.mp3（完整音频），不提交 segments/segments 和中间文件
+papers/*/audio/
+docs/*/audio/segments/
+docs/*/audio/concat.txt
+docs/*/audio/silence_*.mp3
 
 # 旧项目目录（迁移遗留）
 tasks/
 journal/
+
+# source.pdf 太大,走 GitHub Release 附件,不直接提交(dreamzero 例外已入库)
+papers/*/source.pdf
+docs/*/source.pdf
+
+# podcast.mp3 走 Release 附件,不直接提交(dreamzero 例外已入库)
+papers/*/audio/podcast.mp3
+docs/*/audio/podcast.mp3
+
+# PDF: 用 arXiv 链接,不提交 source.pdf
+docs/*/source.pdf
+papers/*/source.pdf
+
+# 音频:用 Release 托管,docs/ 里只留占位(HTML 用相对路径 audio/podcast.mp3)
+docs/*/audio/

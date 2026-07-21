@@ -255,11 +255,6 @@ audio.hidden-src {{ display:none; }}
 <header class="hero">
   <h1>Paper Podcast</h1>
   <p>研究论文深度解读。每篇 15 分钟口播，听完脑子里能建出论文架构。</p>
-  <div class="subscribe">
-    <a href="feed.xml">📡 RSS 订阅</a>
-    <a href="https://podcasts.apple.com" target="_blank">Apple Podcasts</a>
-    <a href="https://github.com/guoshaoyang-pku/paper-podcast" target="_blank">GitHub</a>
-  </div>
 </header>
 <main>
 {''.join(cards_html)}

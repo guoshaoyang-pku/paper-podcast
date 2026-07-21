@@ -1,0 +1,325 @@
+{
+  "slug": "wam-survey",
+  "title": "World Action Models: The Next Frontier in Embodied AI",
+  "authors": [
+    "Siyin Wang",
+    "Junhao Shi",
+    "Zhaoyang Fu",
+    "Xinzhe He",
+    "Feihong Liu",
+    "Chenchen Yang",
+    "Yikang Zhou",
+    "Zhaoye Fei",
+    "Jingjing Gong",
+    "Jinlan Fu",
+    "Mike Zheng Shou",
+    "Xuanjing Huang",
+    "Xipeng Qiu",
+    "Yu-Gang Jiang"
+  ],
+  "affiliation": "Fudan University · Shanghai Innovation Institute · National University of Singapore",
+  "arxiv": "2605.12090",
+  "date": "2026-05-12",
+  "venue": "arXiv preprint (Fudan/MOSS survey)",
+  "category": "Survey",
+  "one_liner": "第一份系统梳理 World Action Model(WAM)的综述:把'统一预测未来状态和动作'这族方法正式定义,拆成 Cascaded vs Joint 两大架构范式,沿生成模态/条件机制/动作解码三维细分,并覆盖数据生态、评测协议、开放挑战——给 WAM 这个快速膨胀的领域一张可导航的地图。",
+  "problem": {
+    "what_they_address": "本综述整理的是:VLA 只学 observation→action 映射、不显式建模世界动态,泛化受限;而把 world model 集成进 policy 的方法近一年爆发式增长(DreamZero/LingBot-VA/Cosmos-Policy/Fast-WAM 等),但文献碎片化——架构、学习目标、应用场景各说各话,缺统一概念框架。作者要正式定义 WAM、厘清与 VLA/Video Policy/AWM/VAM 的边界,给出结构化分类法,梳理数据生态和评测协议,并指出开放挑战,给进入这个领域的人一张可导航的地图。",
+    "why_prior_work_falls_short": "之前没有系统综述把 WAM 作为独立范式梳理。各 WAM 论文用不同术语(Video Policy/AWM/VAM 混用)、不同分类轴,新进入者难以判断:显式视觉预测是否必需?Cascaded 和 Joint 架构在下游控制上到底差在哪?各种耦合机制提供什么归纳偏置?数据混合的最优配比是什么?评测上 PSNR/FVD 只测视觉不测物理,task success 只测动作不测视觉-动作因果一致性——这套脱节让 WAM 的真实能力被误判。综述要把这些混乱和空白显式化。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "observation o",
+        "type": "多模态",
+        "detail": "视觉(RGB/depth/点云/光流)+ proprio + 触觉/力(WM 综述强调多模态是开放前沿)"
+      },
+      {
+        "name": "language instruction l",
+        "type": "text",
+        "detail": "任务指令;Cascaded 式常用作视频生成条件,Joint 式常 cross-attention 注入"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "future state o'",
+        "type": "显式或隐式",
+        "detail": "显式:像素视频/latent/光流/点云;隐式:physics-grounded latent(JEPA 式)"
+      },
+      {
+        "name": "action a",
+        "type": "连续或离散",
+        "detail": "action chunk;Cascaded 由 IDM 几何/学习提取,Joint 联合去噪/自回归生成"
+      }
+    ],
+    "control_frequency": "综述不训练模型,无单一频率;指出 DreamZero 7Hz vs 非 generative VLA 50Hz 的 latency gap 是开放挑战",
+    "concat_protocol": "本综述定义的 WAM 统一目标函数(概念层 protocol):\n\nL_WAM = E_{(o,l,o',a)~D} [ -log p(o', a | o, l) ]\n\n这是 WAM 的概念契约——区别于 VLA 的 L_VLA = E[-log p(a|o,l)](只预测动作)和 WM 的 L_WM = E[-log p(o'|o,a)](只预测状态)。WAM 必须同时满足:①Forward Predictive Modeling(生成或利用可量化的未来状态 o' 表示);②Coupled Action Generation(动作 a 严格对齐到预测的未来状态 o')。\n\n两种因子分解(架构层 protocol):\n【Cascaded WAM】p(o',a|o,l) = p(a|o',o,l) · p(o'|o,l) —— 先合成未来状态表示,再从中派生动作;两阶段分离训练。\n【Joint WAM】直接建模 p(o',a|o,l) —— 状态预测和动作生成在统一模型里联合优化。\n\nJoint 内部两种生成路线:\n- Autoregressive:未来状态和动作序列化成 token,左到右因果解码。分三种表示:Explicit Decoupled(异构格式分头输出,如 GR-1/GR-2)/ Unified Discrete(全量化进共享词表,如 CoT-VLA/WorldVLA/ℱ1)/ Predictive Latent(放弃显式 token,在连续 latent 自回归,如 VLA-JEPA)。\n- Diffusion-based:多步去噪并行生成状态和动作。分 Unified Stream(单 DiT 联合去噪,如 DreamZero/Cosmos/UWM/PAD)和 Multi-Stream(多分支耦合:Cross-Attention 如 CoVAR/LDA-1B/DUST,Hidden-State,Shared Representation;LingBot-VA/DexWorldModel 等 MoT)。\n\n三个易混坑:①language 在 Cascaded 里常作视频生成条件,在 Joint 里常 cross-attention 注入,不是统一序列拼接;②多视角处理随架构变——有的通道拼接(Ctrl-World token 维拼接),有的独立编码;③训练用未来状态作监督,推理时是否生成未来状态因方法而异(Fast-WAM/GigaWorld 推理跳过视频生成,LingBot-VA/Cosmos 必须生成)。"
+  },
+  "datasets": [
+    {
+      "name": "Robot-centric Teleoperation",
+      "size": "数十数据集",
+      "note": "QT-Opt/MIME/RoboNet/BridgeData/OXE/DROID/AgiBot World/RoboMIND/ARIO 等;机器人遥操作,精度高但成本高、规模受限"
+    },
+    {
+      "name": "UMI-style Human Demonstration",
+      "size": "便携式",
+      "note": "UMI/FastUMI/DexUMI/UMI on Legs/HoMMI 等;便携手持设备采集,跨本体潜力大,拉近人类与机器人数据"
+    },
+    {
+      "name": "Simulation Data",
+      "size": "可大规模生成",
+      "note": "MimicGen/ManiSkill2/RoboCasa/RoboTwin 2.0/DexMimicGen 等;自动生成、域随机化,但 sim-to-real gap"
+    },
+    {
+      "name": "Internet-scale Egocentric Video",
+      "size": "百万小时级",
+      "note": "EPIC-KITCHENS/HowTo100M/Ego4D/Ego-Exo4D/Assembly101/Nymeria/Humanoid Everyday 等;规模最大、无动作标注,WAM 能利用(video-only objective)"
+    }
+  ],
+  "architecture": {
+    "backbone": "N/A(综述不提模型);综述覆盖的 WAM 用视频扩散 backbone(Wan2.1/Wan2.2/CogVideoX/Cosmos-Predict2/LTX-Video/Sora 2 等)或 autoregressive VLM(PaliGemma/Qwen3-VL/VILA-U/Chameleon 等)",
+    "params": "覆盖模型跨度大:从 GR-1 的 195M 到 DreamZero 的 14B;主流 2-7B",
+    "type": "systematic survey: Cascaded vs Joint WAM taxonomy, with data/eval/challenges",
+    "key_components": [
+      "WAM 正式定义:统一 p(o',a|o,l),满足 Forward Predictive Modeling + Coupled Action Generation 两准则",
+      "概念厘清:WAM vs VLA(只 p(a|o,l))vs WM(只 p(o'|o,a))vs VAM(video 对齐动作)vs Video Policy(用视频 backbone 但不强制预测承诺)vs AWM(早期术语,WAM 重定位为 Agent 而非 simulator)",
+      "Cascaded WAM 分类:Explicit Planning(像素空间,Learned Action Extraction 或 Geometric Extraction)/ Implicit Planning(latent 表示)",
+      "Joint WAM 分类:Autoregressive(Explicit Decoupled / Unified Discrete / Predictive Latent)/ Diffusion-based(Unified Stream: Explicit/Implicit Future Prediction;Multi-Stream: Cross-Attention / Hidden-State / Shared Representation)",
+      "数据生态四源:Robot Teleop / UMI Human Demo / Simulation / Internet Egocentric Video",
+      "评测三维:Visual Fidelity(PSNR/SSIM/LPIPS/FVD)/ Physical Commonsense(VideoPhy/PhyGenBench/WorldScore)/ Action Plausibility(WorldSimBench);指出缺联合评测指标",
+      "七大开放挑战:架构耦合缺乏对照实验 / 多模态物理状态表示 / 数据混合设计 / 推理延迟 / 评测方法论 / 长程层次 / 安全验证"
+    ],
+    "why_this_design": "综述的组织逻辑是:先用概率定义把 WAM 和相邻概念划清边界(Section 2),再追溯 VLA+WM 两条历史脉络如何汇成 WAM(Section 3),然后用 Cascaded vs Joint 这个顶层二分法把所有方法挂进统一框架(Section 4),沿生成模态(autoregressive/diffusion)/条件机制(explicit/implicit)/动作解码(learned IDM/geometric/联合)三维细分。这样组织让读者能从任意一篇新 WAM 论文快速定位它在设计空间的位置,并判断它的架构选择带来什么 trade-off。Cascaded 的核心 trade-off 是模块解耦带来训练简单但两阶段误差累积;Joint 的核心 trade-off 是联合优化对齐紧但训练复杂、推理重。这个二分法是综述最有价值的贡献。",
+    "numerical_sense": {
+      "papers_reviewed": "100+ 篇 WAM 方法 + 数十背景/数据/评测论文;Figure 1 时间线列 ~60 代表作",
+      "architecture_taxonomy_depth": "2 层主分类(Cascaded/Joint)+ 2-3 层细分:Cascaded→Explicit/Implicit→Learned/Geometric/Latent;Joint→Autoregressive/Diffusion→(AR: Explicit Decoupled/Unified Discrete/Predictive Latent)(Diffusion: Unified Stream Explicit/Implicit + Multi-Stream Cross-Attn/Hidden-State/Shared-Repr)",
+      "backbone_span": "视频扩散:Wan2.1-14B(DreamZero)/Wan2.2-5B(LingBot-VA/Fast-WAM)/CogVideoX-5B(VideoVLA)/Cosmos-Predict2-2B(Cosmos-Policy)/LTX-Video-2B(GE-Act)/Sora 2;自回归 VLM:PaliGemma-3B(π0)/Qwen3-VL-2B(VLA-JEPA)/VILA-U-7B(CoT-VLA)/Chameleon(WorldVLA)",
+      "params_span": "GR-1 195M(最小)~ DreamZero 14B(最大);主流 2-7B(Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / π0 3B)",
+      "data_sources": "4 大类:Robot Teleop(数十数据集,OXE/DROID/AgiBot World)/ UMI Human Demo(便携)/ Simulation(MimicGen/RoboTwin 2.0)/ Internet Ego Video(EPIC-KITCHENS/Ego4D/HowTo100M,百万小时级)",
+      "eval_dimensions": "3 维:Visual Fidelity(PSNR/SSIM/LPIPS/FVD/DreamSim/DINO)+ Physical Commonsense(VideoPhy/PhyGenBench/VBench-2.0/WorldScore/Physics-IQ)+ Action Plausibility(WorldSimBench/WoW)",
+      "action_policy_benchmarks": "General(MetaWorld/RLBench/CALVIN/LIBERO)+ Bimanual/Humanoid(RoboTwin/BiGym/HumanoidBench)+ Mobile(ManipulaTHOR)+ Contact/Deformation(SoftGym/TacSL)+ Real-Device(RoboArena/Maniparena)",
+      "latency_reference": "DreamZero 7Hz(算法+系统优化极限)vs 非 generative VLA 50Hz;综述指出这是核心开放挑战——WAM 推理 latency tax 威胁闭环控制",
+      "open_challenges": "7 个:架构耦合缺对照实验 / 多模态物理状态(触觉/力/声)/ 数据混合设计原理 / 推理延迟 / 评测方法论(缺联合指标)/ 长程层次与时间上下文 / 安全验证(prediction-integrated safety)"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 2,
+      "title": "WAM 时间演化与架构 taxonomy(最重要)",
+      "caption_original": "Temporal evolution and taxonomy of representative works on World Action Models (WAMs). The left branch illustrates the progression of Joint WAM architectures, which tightly couple world prediction and action generation, showing a divergence into Autoregressive and Diffusion-based representation schemes, with the continuous approach further bifurcating into Unified Stream and Multi-Stream backbones. The right branch summarizes the development of Cascaded WAM pipelines, where world modeling and action execution are primarily decoupled, evolving along Explicit and Implicit representation alignment trajectories.",
+      "what_it_shows": "全文最该看的图。左分支 Joint WAM 时间线:从 GR-1(2024)开始,2025-2026 爆发,分 Autoregressive(GR-2/CoTVLA/WorldVLA/VLA-JEPA/ℱ1)和 Diffusion-based(VideoVLA/Cosmos-Policy/DreamZero/LingBot-VA/Fast-WAM/GigaWorld-Policy),后者再分 Unified Stream 和 Multi-Stream。右分支 Cascaded WAM 时间线:UniPi(2023)起,沿 Explicit(UniPi/VLP/AVDC/Gen2Act/Veo-Act)和 Implicit(VPP/LAPA/mimic-video/S-VAM)发展。这张图是整个综述的导航地图——一眼看清 WAM 全景和两种架构范式的演化路径。",
+      "image_path": "figures/p02.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 4,
+      "title": "WAM 路线图(四大维度)",
+      "caption_original": "The comprehensive roadmap and taxonomy of World Action Models (WAMs) reviewed in this survey. The literature is systematically categorized into four core dimensions: background (Sec. 3), architecture (Sec. 4), training data (Sec. 5), and evaluation protocols (Sec. 6).",
+      "what_it_shows": "综述的四大维度路线图:Background(VLA/WM 脉络)/ Architecture(Cascaded Explicit+Implicit / Joint Autoregressive+Diffusion-based)/ Training Data(Robot-centric Teleop / UMI Human / Simulation / Human Data)/ Evaluation(World Model: Visual Fidelity+Physical Commonsense+Action Plausibility / Action Policy: General+Bimanual+Mobile+Contact+Real-Device)。每个分支下列具体方法/数据集/benchmark。是综述结构的可视化,告诉你'想找 X 该去哪节'。",
+      "image_path": "figures/p04.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 5,
+      "title": "WAM 概念定义与对比",
+      "caption_original": "Conceptual definition and comparison of World Action Models (WAMs). The left panel contrasts the input-output formulations of Vision-Language-Action (VLA) models, WAMs, and standard World Models (WMs), highlighting WAM's capability to jointly predict actions and future observations. The right panel illustrates the conceptual scope of WAMs relative to other paradigms such as Video Action Models (VAMs) and Video Policies.",
+      "what_it_shows": "两张子图。左:VLA(输入 o,l → 输出 a)/ WM(输入 o,a → 输出 o')/ WAM(输入 o,l → 输出 a + o')的输入输出对比,WAM 同时出动作和未来观测。右:WAM 与 VAM/Video Policy/AWM 的概念包含关系——WAM 是 modality-agnostic 超集(不只视频,含点云/触觉/力),Video Policy 限于视频 backbone 且不强制预测承诺。这张图把 WAM 的概念边界钉死,是 Section 2 定义的可视化。",
+      "image_path": "figures/p05.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 4",
+      "page": 12,
+      "title": "World Model 如何辅助 VLA",
+      "caption_original": "Schematic overview of world models for VLA learning and evaluation. World models can support (a) imitation learning by generating or filtering training trajectories, (b) reinforcement learning by enabling imagined interaction and reward-guided policy optimization, (c) reward modeling by producing reward signals from learned dynamics or future outcomes, and (d) policy evaluation.",
+      "what_it_shows": "WM 作为 VLA 的外生工具(非集成进 policy)的四种用法:①imitation learning(生成/过滤训练轨迹);②reinforcement learning(想象交互 + reward-guided 优化);③reward modeling(从动态/未来产 reward);④policy evaluation(作 benchmark)。这四条是 WAM 出现前的 WM-in-robotics 主流,和 Section 4 的'WM 集成进 policy 成 WAM'形成对照——把 WM 从离线监督变成内部预测核心是 WAM 范式的关键转变。",
+      "image_path": "figures/p12.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 5",
+      "page": 15,
+      "title": "Cascaded WAM 结构示意图",
+      "caption_original": "Schematic comparison of cascaded WAM structures. 1(a) Learned Action: a world model generates an explicit pixel-space future plan, mapped to actions by a learned IDM. 1(b) Geometric Extraction: explicit visual plan converted to actions via geometric extraction. 2(a) Latent Representation: intermediate planning carrier is a latent future representation, action model decodes from it.",
+      "what_it_shows": "Cascaded WAM 的三种子模式:1(a) Learned Action(UniPi/VLP/RoboEnvision——视频生成出像素未来,学习 IDM 提取动作);1(b) Geometric Extraction(AVDC/Im2Flow2Act——视频未来转光流,几何解析出 SE(3) 动作,无需动作标注);2(a) Latent Representation(VPP/LAPA/mimic-video——中间载体是 latent 未来表示,不生成像素,动作模型从 latent 解码)。这张图是 Cascaded 二分法(Explicit Pixel vs Implicit Latent)+ Explicit 二分(Learned vs Geometric)的可视化,对应 Section 4.1。",
+      "image_path": "figures/p15.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 21,
+      "title": "Joint WAM (Diffusion) 结构 taxonomy",
+      "caption_original": "Taxonomy of the main architectural patterns in the diffusion-based joint WAMs. 1(a) Unified Stream: World and action integrated within one single DiT backbone. 2(a) Multi-Stream – Cross-Attention Coupled: separate video and action DiTs coupled through explicit cross-attention. 2(b) Multi-Stream – Hidden-State Coupling. 2(c) Multi-Stream – Shared Representation.",
+      "what_it_shows": "Diffusion-based Joint WAM 的四种子模式:1(a) Unified Stream(单 DiT 联合去诺,如 DreamZero/Cosmos-Policy/PAD/UWM——最紧耦合);2(a) Multi-Stream Cross-Attention(视频/动作双 DiT,cross-attention 耦合,如 CoVAR/LDA-1B/DUST);2(b) Hidden-State Coupling(视频 DiT 的隐藏状态条件化动作 DiT);2(c) Shared Representation(统一编码器先融合再分头解码)。这张图把 Joint WAM 最复杂的部分(Diffusion 路线的结构耦合)讲清,对应 Section 4.2.2。Unified vs Multi-Stream 是核心二分:前者紧但重,后者灵活但耦合机制要设计。",
+      "image_path": "figures/p21.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 7",
+      "page": 26,
+      "title": "数据生态景观图",
+      "caption_original": "An overview of the embodied data landscape for training World Action Models, mapped across Transfer Difficulty (Y-axis) and Scaling Difficulty (X-axis).",
+      "what_it_shows": "训练 WAM 的四类数据在'迁移难度(Y)'vs'规模化难度(X)'二维平面的分布。Robot Teleop 迁移易但规模化难(成本高);UMI Human Demo 迁移中等、规模化中等;Simulation 迁移难(sim-to-real gap)但规模化易(自动生成);Internet Ego Video 迁移难但规模化最易(百万小时级,无动作标注)。这张图直观说明为什么 WAM 能利用 video-only 数据是个关键优势——它打开了 Internet Ego Video 这条最大规模的数据通路,是 WAM 相对 VLA 的数据生态优势。对应 Section 5。",
+      "image_path": "figures/p26.png",
+      "importance": "supportive"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "WAM 统一目标函数(概念契约)",
+      "problem_it_solves": "把 WAM 这族方法正式定义,与 VLA/WM 区分",
+      "how": "L_WAM = E[-log p(o', a | o, l)],同时预测未来状态 o' 和动作 a;区别于 VLA 的 L_VLA=E[-log p(a|o,l)](只预测动作)和 WM 的 L_WM=E[-log p(o'|o,a)](只预测状态)",
+      "why_it_works": "这是 WAM 作为独立范式的最小定义:必须同时满足 Forward Predictive Modeling(生成可量化未来状态)和 Coupled Action Generation(动作严格对齐到预测未来)。综述用它统一了文献里 Video Policy/AWM/VAM 等混乱术语。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Cascaded vs Joint 架构二分",
+      "problem_it_solves": "WAM 文献架构各异,缺统一分类轴",
+      "how": "Cascaded: p(o',a|o,l) = p(a|o',o,l)·p(o'|o,l),两阶段分离训练,先合成未来状态再派生动作;Joint: 直接建模 p(o',a|o,l),联合优化",
+      "why_it_works": "这个二分揭示了核心 trade-off:Cascaded 模块解耦、训练简单,但误差累积、未来状态与动作对齐弱;Joint 对齐紧、能内部化因果,但训练复杂、推理重。代表作:Cascaded=UniPi/AVDC/Veo-Act;Joint=DreamZero/Cosmos-Policy/Fast-WAM。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "三维细分分类法(生成模态/条件机制/动作解码)",
+      "problem_it_solves": "在 Cascaded/Joint 顶层二分之下,还需要更细的分类轴来定位具体方法",
+      "how": "三维:①生成模态(pixel/latent/3D/feature);②条件机制(autoregressive/bidirectional/diffusion);③动作解码(IDM/correspondence/flow/直接 head)",
+      "why_it_works": "这三维覆盖了 WAM 的主要设计自由度,新方法可以在三维空间里定位自己,并看出哪些组合未被探索。比如 DreamZero 是 latent+AR+IDM,Cosmos-Policy 是 pixel+diffusion+MPC。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "评测协议批判:PSNR/FVD 不够,需视觉-动作因果一致性",
+      "problem_it_solves": "现有 WAM 评测要么只测视觉(PSNR/FVD)要么只测动作(task success),会误判 WAM 真实能力",
+      "how": "综述指出需要同时测:视觉预测质量、动作执行成功率、以及视觉-动作因果一致性(预测的未来是否真的对应执行的动作)",
+      "why_it_works": "DreamZero 的'失败来自 video 预测错'正是这个论断的实证——如果只测动作 success,会错过这个诊断信号。综述把评测维度显式化,是给后续工作的方法论贡献。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_taxonomies": [
+    {
+      "name": "顶层二分:Cascaded vs Joint WAM",
+      "definition": "Cascaded: p(o',a|o,l) = p(a|o',o,l)·p(o'|o,l),先合成未来状态再派生动作,两阶段分离训练;Joint: 直接建模 p(o',a|o,l),状态预测和动作生成联合优化",
+      "trade_off": "Cascaded 模块解耦训练简单,但两阶段误差累积、未来状态表示和动作对齐弱;Joint 对齐紧、能内部化因果,但训练复杂、推理重",
+      "representatives": "Cascaded: UniPi/VLP/AVDC/Gen2Act/Veo-Act/VPP/mimic-video/LAPA;Joint: GR-1/GR-2/CoT-VLA/WorldVLA/VLA-JEPA/ℱ1(AR)/ DreamZero/Cosmos-Policy/LingBot-VA/Fast-WAM/PAD/UWM(Diffusion)"
+    },
+    {
+      "name": "Cascaded 内部:Explicit Pixel vs Implicit Latent",
+      "definition": "Explicit: 中间载体是像素级未来(视频/光流/点云);Implicit: 中间载体是 latent 未来表示,不生成像素",
+      "trade_off": "Explicit 可解释、用足视频生成模型容量,但 IDM 提取动作有 ill-posed 风险;Implicit 高效、避免像素生成开销,但 latent 表示质量决定动作精度",
+      "sub_split": "Explicit 再分 Learned Action Extraction(UniPi/VLP 学 IDM)vs Geometric Extraction(AVDC/Im2Flow2Act 几何解析光流→SE(3),无需动作标注)"
+    },
+    {
+      "name": "Joint 内部:Autoregressive vs Diffusion-based",
+      "definition": "AR: 序列化成 token 左到右因果解码;Diffusion: 多步去噪并行生成状态和动作",
+      "trade_off": "AR 适合长 horizon 因果一致性但序列解码慢、误差累积;Diffusion 高频并行、捕获多模态但计算密集",
+      "representatives": "AR: GR-1/GR-2/CoT-VLA/WorldVLA/ℱ1/VLA-JEPA;Diffusion: DreamZero/Cosmos-Policy/LingBot-VA/Fast-WAM/PAD/UWM/VideoVLA/Motus"
+    },
+    {
+      "name": "Joint AR 内部:三种表示范式",
+      "definition": "Explicit Decoupled(异构格式分头输出,如 GR-1 双分支)/ Unified Discrete(全量化进共享词表,同一 next-token head,如 CoT-VLA/WorldVLA)/ Predictive Latent(放弃显式 token,连续 latent 自回归,如 VLA-JEPA)",
+      "trade_off": "Decoupled 灵活但跨模态 grounding 浅;Discrete 统一但离散控制高方差、compounding error;Latent 高效抽象但放弃像素可解释性"
+    },
+    {
+      "name": "Joint Diffusion 内部:Unified Stream vs Multi-Stream",
+      "definition": "Unified Stream: 单 DiT 联合去噪,世界和动作在同主干(Explicit Future Prediction 显式生成未来 + Implicit Future Prediction 隐式 latent 对齐);Multi-Stream: 多分支耦合(Cross-Attention / Hidden-State / Shared Representation)",
+      "trade_off": "Unified 紧耦合、同步强,但单主干承载所有计算;Multi-Stream 灵活、可异构 schedule,但耦合机制要专门设计",
+      "representatives": "Unified: DreamZero/Cosmos-Policy/PAD/UWM/VideoVLA/FLARE/FRAPPE;Multi-Stream: LingBot-VA/DexWorldModel/Motus/CoVAR/LDA-1B/DUST"
+    },
+    {
+      "name": "数据生态四源分类",
+      "definition": "Robot Teleop(高精度,规模化难)/ UMI Human Demo(便携,跨本体潜力)/ Simulation(自动生成,sim-to-real gap)/ Internet Ego Video(百万小时级,无动作标注)",
+      "key_insight": "WAM 能利用 video-only 数据(video prediction objective 不需 action),打开 Internet Ego Video 这条最大规模数据通路——这是 WAM 相对 VLA 的数据生态优势"
+    },
+    {
+      "name": "评测三维:Visual Fidelity / Physical Commonsense / Action Plausibility",
+      "definition": "Visual Fidelity(PSNR/SSIM/LPIPS/FVD 测视觉质量)/ Physical Commonsense(VideoPhy/WorldScore 测物理常识)/ Action Plausibility(WorldSimBench 测动作合理性)",
+      "gap": "综述指出:三维度目前脱节——视觉指标忽略物理正确性(悬浮物体得分高),动作只测 task success 忽略视觉-动作因果一致性。缺联合评测指标(如 Counterfactual Consistency、Foresight-Conditioned Success)"
+    }
+  ],
+  "key_findings": [
+    {
+      "finding": "WAM 是 VLA 的概念继任者,不是又一个生成模型",
+      "evidence": "WAM 统一建模 p(o',a|o,l),把 VLA 的 p(a|o,l) 和 WM 的 p(o'|o,a) 合并;术语从 AWM(名词是 World Model,定位为 simulator)转向 WAM(定位为 Agent,World 和 Action 对等)",
+      "implication": "WAM 应被视作机器人 foundation model 的新主类,不是辅助工具"
+    },
+    {
+      "finding": "Cascaded vs Joint 的核心 trade-off 是'训练简单 vs 对齐紧'",
+      "evidence": "Cascaded(UniPi/VLP/AVDC)模块解耦训练简单,但 IDM 提取动作有 ill-posed 风险、两阶段误差累积;Joint(DreamZero/LingBot-VA)联合优化对齐紧,但训练复杂、推理重",
+      "implication": "工业部署若重推理速度可能倾向 Cascaded,若重精度可能倾向 Joint"
+    },
+    {
+      "finding": "显式像素预测是否必需仍是开放问题",
+      "evidence": "Implicit Future Prediction(FLARE/FRAPPE)和 Predictive Latent(VLA-JEPA)用 latent 对齐替代像素生成仍有效;综述指出'latent-only 表示能否维持生成式方法的 grounding 质量是关键开放问题'",
+      "implication": "未来 WAM 可能走向 latent-only,跳过昂贵像素生成"
+    },
+    {
+      "finding": "WAM 能利用 video-only 数据是相对 VLA 的核心数据优势",
+      "evidence": "Internet Ego Video 百万小时级无动作标注,WAM 的 video prediction objective 不需 action 就能学动态;VLA 必须有 action 标注",
+      "implication": "WAM 打开了人类视频这条最大规模数据通路,scaling 潜力大于 VLA"
+    },
+    {
+      "finding": "推理 latency 是 WAM 部署的最大障碍",
+      "evidence": "DreamZero 7Hz(算法+系统优化极限)仍远低于非 generative VLA 的 50Hz;综述指出'WAM 的 latency tax 威胁闭环控制可行性'",
+      "implication": "未来方向:task-adaptive predictive fidelity(按任务需求动态调预测精度),而非一味追求高保真加速"
+    },
+    {
+      "finding": "评测方法论脱节,缺联合指标",
+      "evidence": "视觉指标(PSNR/FVD)忽略物理(悬浮物体得分高);动作只测 task success 忽略视觉-动作因果一致性",
+      "implication": "需联合指标如 Counterfactual Consistency(动作如何适应想象未来的扰动)、Foresight-Conditioned Success(执行轨迹是否严格遵循视觉计划)"
+    },
+    {
+      "finding": "多模态物理状态(触觉/力/声)是未开发前沿",
+      "evidence": "接触密集操作的关键物理信息(触觉分布/接触力/声学/材料 compliance)在像素空间不可见;WAM 几乎全预测 RGB",
+      "implication": "未来 WAM 需 modality-adaptive prediction——有传感器时多模态预测,无时优雅降级到视觉"
+    },
+    {
+      "finding": "架构耦合缺乏对照实验,领域被'架构时尚'驱动",
+      "evidence": "Cascaded/Joint/离散 token/隐式对齐多种结构策略并存,但无系统对照实验在匹配规模/数据/评测下比较",
+      "implication": "急需 rigorous ablation 和理论分析,从架构时尚走向 principled design"
+    }
+  ],
+  "insights": [
+    "WAM 的定义性特征是'预测承诺'——必须显式或隐式地预测未来状态 o' 作为推理输出的一部分。Video Policy 只继承视频 backbone 表示但不强制预测,不算 WAM(p5 Figure 3)。这个区分把'装上视频 backbone 就叫 WAM'的滥用挡住了。",
+    "Cascaded vs Joint 二分法是整个综述最有价值的贡献:它把所有 WAM 方法挂进统一框架,让读者能从任意新论文快速定位设计空间位置,并判断架构选择的 trade-off(p14, Figure 5/6)。这个二分比按 backbone(AR/Diffusion)分更根本,因为它直接对应'世界和动作怎么耦合'。",
+    "WAM 能用 video-only 数据是相对 VLA 的根本数据优势——Internet Ego Video 百万小时级无动作标注,VLA 必须有 action 才能学。这打开了 scaling 路径,可能比单个模型架构创新更重要(p26 Figure 7)。",
+    "推理 latency 是 WAM 的阿喀琉斯之踵:DreamZero 7Hz 是极限,非 generative VLA 50Hz。综述提出'task-adaptive predictive fidelity'——不追求高保真加速,而是识别任务所需的最小充分世界模型(p43)。这是比单纯堆 CUDA 优化更深刻的加速方向。",
+    "评测方法论的脱节是 WAM 真实能力被误判的根源:PSNR/FVD 测视觉但允许物理错误,task success 测动作但忽略视觉-动作因果。综述提出联合指标(Counterfactual Consistency / Foresight-Conditioned Success)——这是评测范式需要补的核心空白(p43)。",
+    "架构耦合缺对照实验是领域最大方法论空白:各种结构策略并存但无匹配条件下的系统比较,导致'架构时尚'驱动而非 principled design。综述把这点列为第一开放挑战——这本身是对当前 WAM 研究节奏的一个批评(p41)。"
+  ],
+  "novelty_vs_peers": [
+    "vs 各 WAM 单篇论文(DreamZero/LingBot-VA/Cosmos-Policy/Fast-WAM):那些论文各自提架构,但用不同术语和分类轴;本综述用统一 Cascaded/Joint 框架把它们全挂进设计空间,让横向比较成为可能。",
+    "vs 现有 VLA 综述:VLA 综述聚焦 observation→action 映射,本综述把 WAM 作为独立范式(预测未来状态+动作)梳理,补了'world modeling 集成进 policy'这个空白的系统综述。",
+    "vs 现有 world model 综述:WM 综述多聚焦'world model 作 simulator/reward'的外生工具角色;本综述聚焦'WM 集成进 policy 成 WAM'的内生范式,这是近一年爆发的新方向。",
+    "vs wam-vs-vla 鲁棒性研究:那份研究在评测协议层面对比 WAM/VLA;本综述在架构/概念层面梳理 WAM 内部分类。两者互补——一个测谁更强,一个理清怎么分类。"
+  ],
+  "limitations": [
+    "论文自承:架构耦合缺乏对照实验,本综述只能罗列各范式,无法给出'Cascaded vs Joint 在匹配条件下谁更优'的实证结论(p41 Open Challenge 1)。",
+    "论文自承:评测方法论脱节,本综述整理了现有评测但未提出新的联合评测指标,只指出方向(Counterfactual Consistency 等)(p43)。",
+    "论文自承:多模态物理状态(触觉/力/声)是未开发前沿,本综述覆盖的 WAM 几乎全预测 RGB,多模态部分只能指向未来(p42)。",
+    "论文自承:数据混合设计原理不清,本综述罗列四类数据但无法给出最优配比(p42)。",
+    "我们读出:综述覆盖方法截至 2026 年初,但 WAM 领域迭代极快(每月新论文),部分最新方法可能未纳入;Figure 1 时间线已显示 2026 年仍在爆发,综述的时效性有限。",
+    "我们读出:分类法本身是人为构造,Cascaded vs Joint 的边界在 hybrid 方法上模糊(如 π0.7 用 VLA 替 IDM 属 Cascaded 还是 Joint?MOTUS 用视频 backbone 但 action 走 VLM expert 算不算 WAM?)——综述承认 MOTUS 被排除因'action 不走 world backbone',但这类边界判断有主观空间。",
+    "我们读出:综述是叙述性梳理,缺定量 meta-analysis(如各架构在统一 benchmark 上的成功率分布),读者难以从综述直接判断哪种架构实证上更优——这需要像 wam-vs-vla 那样的对照研究配合。"
+  ],
+  "reproducibility": {
+    "homepage": "https://openmoss.github.io/Awesome-WAM",
+    "github": "https://github.com/OpenMOSS/Awesome-WAM",
+    "nature": "综述论文,无代码/权重;提供 Awesome-WAM 论文清单仓库供追踪"
+  },
+  "tags": [
+    "WAM",
+    "survey",
+    "taxonomy",
+    "Cascaded WAM",
+    "Joint WAM",
+    "world model",
+    "VLA",
+    "video prior",
+    "Fudan",
+    "MOSS"
+  ]
+}

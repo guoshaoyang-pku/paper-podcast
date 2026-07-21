@@ -1,0 +1,260 @@
+{
+  "slug": "wam-vs-vla",
+  "title": "Do World Action Models Generalize Better than VLAs? A Robustness Study",
+  "authors": [
+    "Zhanguang Zhang",
+    "Zhiyuan Li",
+    "Behnam Rahmati",
+    "Rui Heng Yang",
+    "Yintao Ma",
+    "Amir Rasouli",
+    "Sajjad Pakdamansavoji",
+    "Yangzheng Wu",
+    "Lingfeng Zhang",
+    "Tongtong Cao",
+    "Feng Wen",
+    "Xinyu Wang",
+    "Xingyue Quan",
+    "Yingxue Zhang"
+  ],
+  "affiliation": "Huawei Technologies · University of Toronto",
+  "arxiv": "2603.22078",
+  "date": "2026-04-30",
+  "venue": "arXiv preprint (Huawei)",
+  "category": "Evaluation",
+  "one_liner": "在 LIBERO-Plus 和自建 RoboTwin 2.0-Plus 两个扰动基准上系统对比 VLA/WAM/混合三类策略,发现 WAM 在视觉扰动(噪声/光照/布局)上更鲁棒,但相机视角和机器人初始状态仍是硬伤;推理比 π0.5 慢至少 4.8 倍是 WAM 部署的主要障碍。",
+  "problem": {
+    "what_they_address": "WAM(用视频生成模型做 policy)被宣称因继承视频预训练的时空先验而比 VLA 更鲁棒,但缺系统对照。作者要在统一扰动协议下,把 SOTA VLA(π0/π0.5/OpenVLA-OFT/X-VLA 等)、混合方法(MOTUS/VLA-JEPA)、WAM(LingBot-VA/Cosmos-Policy/GE-Act/Fast-WAM)放一起比,回答:WAM 真的比 VLA 泛化更好吗?鲁棒性来自视频先验还是数据多样性?代价是什么?",
+    "why_prior_work_falls_short": "之前的 WAM 论文(LingBot-VA/Cosmos-Policy 等)各自报告优于 VLA,但评测协议不统一、扰动维度不全、且往往只对比自家选的 baseline。VLA 阵营的 π0.5 也宣称强泛化,但靠的是大量多样化机器人+web 数据加多种学习目标,而非视频先验。两条路线的'鲁棒性来源'被混在一起,无法判断到底是视频先验有效,还是数据多样性有效,还是两者必需。DreamZero 因 14B Wan2.1 backbone 太贵且推理需 15min warmup 被排除;GigaWorld-Policy 未开源。所以需要一个统一基准把这些变量拆开。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "third-person camera",
+        "type": "image",
+        "detail": "LIBERO-Plus: 1 张 256×256;RoboTwin 2.0-Plus: head 相机 320×240"
+      },
+      {
+        "name": "wrist camera(s)",
+        "type": "image",
+        "detail": "LIBERO-Plus: 1 张;RoboTwin 2.0-Plus: 2 张(每臂一张),320×240"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "RoboTwin 2.0-Plus: 2500 条预生成变体(50 任务×50 变体),含 R1 干扰/R2 共识改写/R3 推理链"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "机器人关节状态;具体形式随模型(delta joint/absolute joint/delta EEF 等,见 Appendix Table)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "action chunk",
+        "type": "continuous",
+        "detail": "chunk size 随模型:π0.5=50, X-VLA=30, Fast-WAM/GE-Act/Cosmos/MOTUS=16, LingBot-VA(RW)=32, LingBot-VA(RT)=32"
+      }
+    ],
+    "control_frequency": "各模型原生频率;评测关注 success rate 和推理延迟,不强制统一频率",
+    "concat_protocol": "本研究不提出新 protocol,而是评测既有 VLA/WAM 的 protocol。各家族差异:\n\n【VLA 家族】(π0.5/OpenVLA-OFT/X-VLA):<bos_vision>[img_3rd ⊕ img_wrist]<eos_vision><bos_lang>TokLLM(instruction)<eos_lang><bos_state>proprio<eos_state><bos_action>diffusion action expert → a1:H<eos_action>。语言通常 cross-attention 或 token 拼接,backbone 是 VLM(图像-文本预训练)。\n\n【WAM 家族】(LingBot-VA/Cosmos-Policy/GE-Act/Fast-WAM/DreamZero):<bos_vision>[img history]<eos_vision><bos_lang>instruction<eos_lang><bos_state>proprio<eos_state><bos_wam>[video latent z_t, action latent a_t] → 视频扩散去噪 → (未来视觉状态 z_{t+1}, 动作 a)<eos_wam>。backbone 是视频生成模型(web 视频预训练)。\n\n【三个关键差异】:\n1. backbone 不同:VLA 用 VLM(静态图像-文本),WAM 用视频扩散(动态视频)。这决定了是否继承'时空先验'。\n2. 因果预测方向不同:①IDM 式(LingBot-VA/GE-Act)先预测未来视觉状态再条件化动作 p(h_{t+1}|h_t)·g(a|h_t,h_{t+1});②联合去噪(Cosmos-Policy/DreamZero/Fast-WAM)共享 timestep 联合预测 p(h_{t+1},a|h_t);③动作优先(GigaWorld-Policy)先预测动作再条件化视频。论文发现 IDM 式对训练数据多样性依赖更低,联合去噪式更依赖。\n3. 测试时是否生成视频:LingBot-VA/GE-Act/Cosmos 测试时必须生成未来视觉状态再解码动作(慢);Fast-WAM/GigaWorld-Policy 测试时可跳过视频生成直接出动作(快但仍比 π0.5 慢 3×)。"
+  },
+  "datasets": [
+    {
+      "name": "LIBERO-Plus",
+      "size": "单臂 7-DoF Franka",
+      "note": "Fei et al. 2025 提出,7 类扰动;2 相机(1 第三视角+1 腕部)256×256;评测单臂灵巧性"
+    },
+    {
+      "name": "RoboTwin 2.0-Plus(自建)",
+      "size": "双臂 Aloha-Agilex, 50 任务",
+      "note": "本文扩展;7 维度 21 子维度扰动;3 相机(head+2 腕部)320×240;评测双臂协调鲁棒性;每 config 50 episodes/task,8 configs/task(1 clean+7 扰动)"
+    },
+    {
+      "name": "π0.5 RoboTwin finetune",
+      "size": "27.5k 训练数据",
+      "note": "JAX 实现,60k gradient steps,AdamW,cosine lr 2.5e-5→2.5e-6,batch 64,delta joint actions"
+    },
+    {
+      "name": "评测模型集合",
+      "size": "10+ 模型",
+      "note": "VLA: π0/π0-FAST/π0.5/OpenVLA-OFT/UniVLA/RIPT-VLA/X-VLA/HoloBrain0-GD/ABot-M0;混合: MOTUS/VLA-JEPA;WAM: GE-Act/Cosmos-Policy/LingBot-VA/Fast-WAM"
+    }
+  ],
+  "architecture": {
+    "backbone": "N/A(对比研究,不提模型);评测的 WAM 用 Cosmos-Predict2/LTX-Video/Wan2.1/Wan2.2 视频扩散,VLA 用 PaliGemma/Qwen3-VL 等 VLM",
+    "params": "评测模型跨度:VLA 2-7B;WAM 1.5-14B(VPP 1.5B / GE-Act 2.2B / Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / DreamZero 14B)",
+    "type": "systematic comparison: VLA vs Hybrid(VLA+WM) vs WAM, across 7 perturbation dimensions",
+    "key_components": [
+      "评测协议:7 维度×21 子维度扰动(Camera/Robot/Language/Light/Background/Noise/Layout),各维度独立激活隔离效果",
+      "WAM 分类轴(Table 1):backbone / 是否 MOT / 是否 Pretrain Free / 是否 Causal Pred(动作条件化预测状态)/ 是否 AR Gen",
+      "训练数据对照(Table 2):embodied pre-training vs post-training vs task-specific finetune 三阶段,拆开 web video/human ego/cross-embodiment/task data",
+      "因果预测三式:IDM 式(LingBot-VA/GE-Act)/ 联合去噪(Cosmos/DreamZero/Fast-WAM)/ 动作优先(GigaWorld)",
+      "推理延迟对照(Table 5):π0.5 63ms 基线,各 WAM 4.8×~83× 慢;denoising steps 是主因"
+    ],
+    "why_this_design": "核心是要把'视频先验有效'和'数据多样性有效'两个混淆变量拆开。Fast-WAM 提供了一个天然实验:同架构同 backbone,RoboTwin 用 clean+domain-randomized 训(数据多样),LIBERO 用 clean only 训(数据单一)——结果 RoboTwin 上 72.7% 鲁棒、LIBERO 上崩到 51.5%。这隔离出'视频先验必要但不充分,数据多样性仍是关键杠杆'。同时对比 IDM 式 vs 联合去噪式发现:IDM 式因显式状态-动作因果耦合,对训练数据多样性依赖更低——这是架构选择对鲁棒性的影响。这两个发现是本研究最有价值的贡献。",
+    "numerical_sense": {
+      "benchmarks": "2 个:LIBERO-Plus(单臂 Franka,2 相机 256×256)+ RoboTwin 2.0-Plus(双臂 Aloha-Agilex,3 相机 320×240)",
+      "tasks": "RoboTwin 2.0-Plus: 50 双臂任务;LIBERO-Plus: 标准 LIBERO 任务集",
+      "perturbation_dims": "7 维度 21 子维度:Camera(C1/C3 active, C2 default off)/Robot(joint+gripper)/Language(R1/R2/R3)/Light(L1/L2/L3/L4)/Background(B1/B2)/Noise(N1-N5)/Layout(O1/O2)",
+      "episodes_per_config": "50 episodes/task/config;8 configs/task(1 clean + 7 扰动分支);每分支只激活一个维度隔离效果",
+      "robot_perturbation": "关节 Gaussian noise std=0.1 rad(clip ±0.225 rad);gripper 极端位置(0.05/0.95) p=0.25",
+      "language_variants": "2500 条预生成(50 任务×50 变体);R1 干扰~30%/R2 共识改写~50%/R3 推理链~20%",
+      "model_params_span": "VPP 1.5B / GE-Act 2.2B / Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / DreamZero 14B;VLA 多 2-7B",
+      "action_chunk_sizes": "π0.5=50 / X-VLA=30 / Fast-WAM=GE-Act=Cosmos=MOTUS=16 / LingBot-VA=32",
+      "inference_latency": "π0.5 63ms(基线) / X-VLA 195ms(3.1×) / Fast-WAM 190ms(3.0×) / GE-Act 300ms(4.8×) / Cosmos-Policy 390ms(6.2×) / LingBot-VA(RW) 480ms(7.6×) / MOTUS 1175ms(18.6×) / LingBot-VA(RT) 5230ms(83×)",
+      "denoising_steps": "GE-Act: 1 state + 10 action;Cosmos-Policy: 5+5;MOTUS: 10+10;LingBot-VA(RW): 3+5;LingBot-VA(RT): 25+50(state denoising 主导 runtime)"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 7,
+      "title": "7 类扰动可视化(RoboTwin 2.0-Plus)",
+      "caption_original": "Examples of perturbations on RoboTwin 2.0-Plus tasks. Definition of notations (N1, L1, etc.) can be found in Section A.",
+      "what_it_shows": "RoboTwin 2.0-Plus 七类扰动的可视化样例:Original(baseline)/Camera(C1+C3 视角变化)/Robot(关节+夹爪初始状态)/Language(R1/R2/R3 指令改写)/Light(L1-L4 光照)/Background(B1+B2 背景)/Noise(N1-N5 传感器噪声)/Layout(O1+O2 干扰物+目标位姿)。给读者一个'扰动到底长什么样'的直观感受,定义了所有后续结果的评测口径。",
+      "image_path": "figures/p07.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 9,
+      "title": "LingBot-VA vs π0.5 失败/成功案例",
+      "caption_original": "Case studies on RoboTwin 2.0-Plus. Three representative cases comparing π0.5 and LingBot-VA. (a) noise N3: π0.5 collides with hammer and fails. (b) layout: π0.5 collides with red block. (c) lighting L1-L4: π0.5 fails to grasp red block due to misalignment.",
+      "what_it_shows": "三个 RoboTwin 任务上 π0.5 失败 vs LingBot-VA 成功的 keyframe 对比:①锤击方块(噪声 N3)π0.5 撞锤子失败;②递方块(layout)π0.5 接近时撞红方块失败;③排 RGB 方块(光照 L1-L4)π0.5 因对齐失败抓不到第一块。LingBot-VA 三例都成功。这是'WAM 在视觉扰动下比 VLA 鲁棒'的定性证据——π0.5 在噪声/光照/布局上都崩,LingBot-VA 稳。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 11,
+      "title": "Cosmos-Policy 预测的未来图像",
+      "caption_original": "Illustrations of future images predicted by Cosmos-policy. Ground-truth and predicted images under three types of perturbations (noise, lighting, and background variations) in LIBERO-Plus are shown.",
+      "what_it_shows": "Cosmos-Policy 在 LIBERO-Plus 三种扰动(噪声/光照/背景)下预测的未来图像 vs ground truth。关键观察:①噪声扰动下 Cosmos-Policy 能在预测里有效 denoise 运动的机械臂(继承自 web 视频的动态对象先验);②但背景扰动下预测出现严重空间扭曲和颜色不一致——少见背景模式让视频模型崩。这是'WAM 鲁棒性来自视频先验,但视频先验在 OOD 背景上失效'的机制证据。",
+      "image_path": "figures/p11.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "统一扰动协议 LIBERO-Plus / RoboTwin 2.0-Plus",
+      "problem_it_solves": "之前 WAM/VLA 各自报告优于对方,但评测协议不统一、扰动维度不全、baseline 自选,无法公平对比",
+      "how": "采用 LIBERO-Plus 的 7 维度扰动协议(Camera/Robot/Language/Light/Background/Noise/Layout),扩展到 RoboTwin 2.0 双臂平台成 RoboTwin 2.0-Plus,21 子维度每维度独立激活(每 config 只开一个维度,其余 clean),50 episodes/task/config,8 configs/task。所有评测模型用同一协议、同一硬件。",
+      "why_it_works": "独立激活隔离每个扰动的效果,避免混淆;同协议同硬件让模型间数字可比;双臂+单臂两个 benchmark 互补,结论不依赖单一 setup。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "WAM 分类轴:backbone/MOT/PretrainFree/CausalPred/ARGen",
+      "problem_it_solves": "WAM 内部差异大(LingBot-VA IDM 式 vs Fast-WAM 联合去噪 vs GigaWorld 动作优先),不分类无法解释性能差异",
+      "how": "Table 1 用 5 个轴把 7 个 WAM 分类:backbone(SVD/LTX/Cosmos-Predict2/Wan2.1/Wan2.2)、是否 Mixture-of-Transformers(视频/动作分离 backbone)、是否 Pretrain Free(不需 task-agnostic embodied 预训练)、Causal Pred 方向(IDM/联合/动作优先)、是否 AR Gen。",
+      "why_it_works": "分类后能解释:Fast-WAM 是唯一 Pretrain Free 的 WAM(只 task-specific finetune 60h 就达 72.7%),证明视频 backbone 时空先验足够;LingBot-VA 用 IDM 式因果耦合,对训练数据多样性依赖低于联合去噪式 Fast-WAM——这是架构选择对鲁棒性的影响。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Fast-WAM 天然实验隔离'视频先验 vs 数据多样性'",
+      "problem_it_solves": "WAM 鲁棒性到底来自视频先验还是训练数据多样性?两个变量在大多数 WAM 上耦合在一起无法拆",
+      "how": "Fast-WAM 同架构同 Wan2.2-5B backbone,RoboTwin 上用 clean+domain-randomized 27.5k 训(数据多样),LIBERO 上用 clean only 训(数据单一)。对比两个 checkpoint 的鲁棒性下降幅度。",
+      "why_it_works": "RoboTwin 上 91.2%→72.7%(降 18 点),LIBERO 上 97.6%→51.5%(降 46 点)。架构和 backbone 完全相同,唯一变量是训练数据多样性。结论:视频先验必要但不充分,task-specific 训练数据多样性仍是关键杠杆。这是本研究最有价值的发现,把社区从'视频先验万能'的幻觉里拉回。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "训练数据三阶段对照拆解鲁棒性来源",
+      "problem_it_solves": "π0.5 等 VLA 鲁棒性强,但靠的是 web data + 多 env tabletop + cross-embodiment + verbal instruction 多源数据,还是 VLM backbone?混在一起无法判断",
+      "how": "Table 2 把每个模型的训练拆三阶段:embodied pre-training / embodied post-training / task-specific finetune,并标注每阶段用了什么数据(semantic understanding/general video/robot data/task data)。π0.5 用了 VQA/captioning/grounding/cross-embodiment/mobile manipulation/high-level planning/verbal instruction 7 类数据;WAM 如 Cosmos-Policy 只用 task-specific 185 条轨迹无 embodied pre-training。",
+      "why_it_works": "对照显示:π0.5 鲁棒性强但训练数据极其多样复杂;WAM 鲁棒性强但训练简单(主要靠视频 backbone 先验)。这把'VLA 也能鲁棒'和'WAM 鲁棒更省事'两个事实并列,说明数据多样性能补偿视频先验缺失,但视频先验让训练更简单——两条路都能到鲁棒,代价不同。",
+      "detail_level": "mid"
+    },
+    {
+      "name": "推理延迟拆解:denoising steps 主导 WAM 慢",
+      "problem_it_solves": "WAM 部署最大障碍是慢,但慢在哪、各模型差多少需要量化",
+      "how": "Table 5 在同一硬件测各模型推理延迟,并拆 state denoising steps 和 action denoising steps。π0.5 63ms 基线,WAM 4.8×~83× 慢。",
+      "why_it_works": "发现 state denoising 主导 runtime:GE-Act 1 state step 最快(300ms),LingBot-VA(RT) 25 state steps 最慢(5230ms)。Fast-WAM 测试时跳过视频生成只出动作,是 WAM 里最快(190ms)但仍 3× 慢于 π0.5。这指明 WAM 加速方向:减少/跳过 state denoising。但 Fast-WAM 在数据单一时鲁棒性崩,说明跳过 state 生成有代价——速度和鲁棒性有 trade-off。",
+      "detail_level": "mid"
+    }
+  ],
+  "key_findings": [
+    {
+      "finding": "WAM 整体比 VLA 鲁棒,尤其视觉扰动",
+      "evidence": "LingBot-VA 74.2% / Fast-WAM 72.7%(RoboTwin 2.0-Plus total);Cosmos-Policy 82.2% / GE-Act 80.3%(LIBERO-Plus total)",
+      "baseline": "π0.5 58.6%(RoboTwin)/ 85.7%(LIBERO,靠极复杂数据)"
+    },
+    {
+      "finding": "WAM 鲁棒性集中在噪声/光照/布局,相机视角和机器人初始状态仍是硬伤",
+      "evidence": "LingBot-VA: light 89.0% / noise 80.9% / layout 87.9% 强;但 camera 28.9% / robot 36.2% 弱",
+      "baseline": "视频先验对几何配置改变帮助有限"
+    },
+    {
+      "finding": "VLA 也能鲁棒,但需大量多样数据补偿视频先验缺失",
+      "evidence": "π0.5 LIBERO-Plus 85.7% 总分最高,但训练用了 web data/multi-env tabletop/cross-embodiment/mobile manipulation/high-level planning/verbal instruction 7 类数据",
+      "baseline": "WAM 如 Cosmos-Policy 只用 185 条 task 轨迹无 embodied pre-training 就达 82.2%"
+    },
+    {
+      "finding": "视频先验必要但不充分,数据多样性仍是关键杠杆",
+      "evidence": "Fast-WAM 同架构:RoboTwin(clean+domain-rand 训)72.7% vs LIBERO(clean only 训)51.5%,差 21 点",
+      "baseline": "唯一变量是训练数据多样性"
+    },
+    {
+      "finding": "IDM 式因果耦合比联合去噪式对数据多样性依赖更低",
+      "evidence": "LingBot-VA(IDM 式,条件化预测状态出动作)在数据相对单一时仍稳;Fast-WAM(联合去噪)数据单一时崩",
+      "baseline": "架构选择影响鲁棒性,不只是 backbone"
+    },
+    {
+      "finding": "混合方法(MOTUS/VLA-JEPA)鲁棒性介于纯 VLA 和 WAM 之间",
+      "evidence": "MOTUS 71.5%(RoboTwin,第 3)/ VLA-JEPA 77.9%(LIBERO)",
+      "baseline": "部分引入视频先验能提升,但不如原生 WAM"
+    },
+    {
+      "finding": "WAM 推理比 π0.5 慢至少 4.8×,部署障碍",
+      "evidence": "π0.5 63ms;Fast-WAM 190ms(3×)/GE-Act 300ms(4.8×)/Cosmos 390ms(6.2×)/LingBot-VA(RW) 480ms(7.6×)/MOTUS 1175ms(18.6×)/LingBot-VA(RT) 5230ms(83×)",
+      "baseline": "state denoising steps 主导 runtime"
+    },
+    {
+      "finding": "π0.5 是唯一在 LIBERO-Plus 总分超 85% 的,但它数据最复杂",
+      "evidence": "π0.5 LIBERO-Plus 85.7% 总分第一,但训练数据 7 类混合",
+      "baseline": "WAM 靠视频先验省数据,VLA 靠数据多样性补先验缺失——两条路殊途同归到鲁棒"
+    }
+  ],
+  "insights": [
+    "WAM 不是万能鲁棒:它在噪声/光照/布局上强(视频先验帮忙),但在相机视角和机器人初始状态上和 VLA 一样弱(p9 Table 3)。视频先验对'视觉外观变化'有效,对'几何配置变化'无效——这是视频先验的边界(p12 conclusion)。",
+    "π0.5 85.7% 总分最高证明:VLA 不靠视频先验也能鲁棒,但代价是训练数据极其多样复杂(7 类数据混合)。WAM 鲁棒更省事(Cosmos-Policy 185 条轨迹无 embodied pre-training 就 82.2%)。两条路殊途同归到鲁棒,但 WAM 训练更简单——这是 WAM 的真正卖点,不是'VLA 做不到'(p10 RQ3)。",
+    "Fast-WAM 天然实验是最干净的因果论证:同架构同 backbone,只改训练数据多样性,鲁棒性差 21 点(72.7% vs 51.5%)。这把社区从'视频先验万能'的幻觉里拉回——视频先验必要但不充分,task-specific 训练数据多样性仍是关键杠杆(p10 RQ2)。",
+    "架构选择影响鲁棒性,不只是 backbone:IDM 式(LingBot-VA,显式状态-动作因果耦合)对训练数据多样性依赖低于联合去噪式(Fast-WAM)。这暗示显式因果建模提供额外架构先验——设计 WAM 时因果方向是重要考量(p10 RQ2)。",
+    "WAM 推理慢的根因是 state denoising,不是 action:GE-Act 1 state step 最快(300ms),LingBot-VA(RT) 25 state steps 最慢(5230ms)。Fast-WAM 跳过测试时 state 生成是最快 WAM(190ms),但数据单一时鲁棒性崩——速度和鲁棒性有 trade-off(p11 RQ4)。",
+    "评测协议的'独立激活'设计是本研究方法论亮点:每 config 只开一个扰动维度,其余 clean,能隔离每个维度效果。这比'全扰动混合'更能定位失败原因——但代价是低估了多扰动叠加时的交互效应(论文未做叠加评测)。"
+  ],
+  "novelty_vs_peers": [
+    "vs 各 WAM 原论文(LingBot-VA/Cosmos-Policy/DreamZero):那些论文各自报告优于 VLA,但评测协议不统一、baseline 自选;本研究用统一 LIBERO-Plus/RoboTwin 2.0-Plus 协议把 10+ 模型放一起比,数字才可比。",
+    "vs LIBERO-Plus 原论文(Fei et al. 2025):LIBERO-Plus 只评 VLA,本研究扩展到 WAM 并自建 RoboTwin 2.0-Plus 双臂 benchmark,补了 WAM 在双臂协调鲁棒性上的评测空白。",
+    "vs DreamZero 论文:DreamZero 因 14B Wan2.1 太贵且推理需 15min warmup 被本研究排除——这本身是个发现:DreamZero 这种大 WAM 在 benchmark-scale 评测上不实际,暗示 WAM 路线要落地推理效率是硬约束。",
+    "vs 各 VLA scaling 论文(π0.5/OpenVLA-OFT):那些论文强调数据 scaling 提泛化,本研究把'数据多样性'和'视频先验'两个变量拆开,证明两者都能到鲁棒但代价不同——这是对 scaling 路线的补充视角。"
+  ],
+  "limitations": [
+    "论文自承:DreamZero 和 GigaWorld-Policy 因 checkpoint 不开源/太贵被排除,评测集合不完整,最强 WAM 可能未参评(p8)。",
+    "论文自承:Fast-WAM 在 LIBERO 上用 clean only 训是'有意的自然实验',但两个 checkpoint 的 task 不同(RoboTwin 双臂 vs LIBERO 单臂),所以'数据多样性'和'task 类型'两个变量未完全隔离(p8)。",
+    "论文自承:WAM 推理慢是部署障碍,本研究只诊断未提出加速方案(p11 RQ4)。",
+    "我们读出:扰动评测是'独立激活'每维度,未做多扰动叠加评测——真实世界往往是多扰动同时发生,独立激活可能高估或低估实际鲁棒性。",
+    "我们读出:π0.5 在 RoboTwin 上是作者自训(JAX,60k steps),可能未达 π0.5 在 PI 原生训练的最优水平;π0.5 LIBERO-Plus 85.7% 是其论文数字,两个 setup 不完全可比。",
+    "我们读出:7 维度扰动里 Language 只测了指令改写,没测多语言/跨文化指令;Camera 只测了视角小扰动(±10°),没测极端视角变化——扰动空间还有扩展余地。",
+    "我们读出:所有评测都在仿真(LIBERO/RoboTwin 都是 sim),真机鲁棒性未验证;sim 里的'光照/噪声'和真机传感器噪声分布不同,结论外推到真机需谨慎。"
+  ],
+  "reproducibility": {
+    "code": "RoboTwin 2.0-Plus benchmark 协议公开(论文 Appendix A);各模型用官方 checkpoint",
+    "weights": "评测的模型 checkpoint 大多公开;π0.5 RoboTwin 版是作者自训(JAX);DreamZero/GigaWorld-Policy 未开源",
+    "sim_benchmark": "LIBERO-Plus(公开)+ RoboTwin 2.0-Plus(自建,协议公开)",
+    "real_eval": "无(全仿真)"
+  },
+  "tags": [
+    "WAM",
+    "VLA",
+    "robustness study",
+    "benchmark",
+    "LIBERO-Plus",
+    "RoboTwin",
+    "perturbation",
+    "video prior",
+    "Huawei",
+    "comparison"
+  ]
+}

@@ -1,0 +1,350 @@
+{
+  "slug": "openvla",
+  "title": "OpenVLA: An Open-Source Vision-Language-Action Model",
+  "authors": [
+    "Moo Jin Kim",
+    "Karl Pertsch",
+    "Siddharth Karamcheti",
+    "Ted Xiao",
+    "Ashwin Balakrishna",
+    "Suraj Nair",
+    "Rafael Rafailov",
+    "Ethan Foster",
+    "Grace Lam",
+    "Pannag Sanketi",
+    "Quan Vuong",
+    "Thomas Kollar",
+    "Benjamin Burchfiel",
+    "Russ Tedrake",
+    "Dorsa Sadigh",
+    "Sergey Levine",
+    "Percy Liang",
+    "Chelsea Finn"
+  ],
+  "affiliation": "Stanford · UC Berkeley · Toyota Research Institute · Google DeepMind · Physical Intelligence · MIT",
+  "arxiv": "2406.09246",
+  "date": "2024-09-05",
+  "venue": "arXiv preprint (Stanford/Berkeley/TRI)",
+  "category": "VLA",
+  "one_liner": "把 Prismatic-7B VLM(DINOv2+SigLIP 融合视觉编码器 + Llama 2 7B)在 970k Open X-Embodiment 机器人轨迹上 fine-tune,把 7 维连续动作离散成 256 个 token 塞进 LLM 词表用 next-token 预测训,一个 7B 开源 VLA 在 29 任务上超 55B 闭源 RT-2-X 16.5 个点,且支持 LoRA(1.4% 参数)和 4bit 量化在消费级 GPU 上 fine-tune 和推理。",
+  "problem": {
+    "what_they_address": "VLA(如 RT-2-X)展现了通用机器人策略的潜力,但有两个阻碍广泛采用的硬伤:1)现有 VLA 全闭源,架构/训练/数据混合不公开;2)prior work 没探索如何高效 fine-tune VLA 到新机器人/任务,尤其消费级硬件。作者要做一个完全开源(数据+权重+代码)的 VLA,并系统研究 fine-tune 和量化部署。",
+    "why_prior_work_falls_short": "RT-2-X 55B 闭源且不支持 fine-tune(只给推理 API);RT-1/Octo 虽部分开源但用 from-scratch 训练(stitch 预训练组件),没充分利用 VLM 的 Internet-scale 先验;prior VLA 工作都没研究 LoRA/量化这类参数高效方法。OpenVLA 的解法是直接 fine-tune 一个强开源 VLM(Prismatic-7B,已融合 DINOv2 空间特征+SigLIP 语义特征)做动作 token 预测,简单可扩展,且把 LLM 生态的 LoRA/量化工具直接搬过来。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "image observation",
+        "type": "image",
+        "detail": "单张 224×224 RGB(第三人称视角);无多视角无历史帧(论文列为局限)"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "任务指令,经 Llama tokenizer;模板 'What should the robot do to {task}? A:'"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "默认不用(论文 ablation 表明视觉已含足够信息);Franka fine-tune 时也不喂 proprio"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "robot action",
+        "type": "discrete token → continuous",
+        "detail": "7 维单步动作(Δx, Δy, Δz, Δroll, Δpitch, Δyaw, gripper);每维离散成 256 bin(用 1%/99% 分位定 bin 宽),映射到 Llama 词表 256 个 token;预测后 de-tokenize 回连续值;无 action chunk(单步预测)"
+      }
+    ],
+    "control_frequency": "推理 ~6Hz(RTX 4090,bfloat16,无编译/推测解码);4bit 量化后 A5000 上 3Hz;训练时 BridgeData V2 5Hz、DROID 15Hz;无 action chunk 故每步都要推理",
+    "concat_protocol": "<bos_img>[DINOv2(patch) ⊕ SigLIP(patch)] → MLP Projector → visual tokens (224×224 → ~256 patch token)]<eos_img><bos_lang>What should the robot do to {task}? A:<eos_lang><bos_action>[a_1, a_2, a_3, a_4, a_5, a_6, a_7] (7 个离散 action token,每 ∈[0,255])<eos_action>\n\n逐 token 解释:\n- <bos_img>...<eos_img>:单张 224×224 图像,分别过 DINOv2(低层空间特征,利于空间推理)和 SigLIP(高层语义特征,利于泛化),patch 特征 channel-wise concat 成融合视觉编码,再经 2 层 MLP projector 映射到 Llama 词嵌入空间。这融合视觉编码器是 OpenVLA 关键设计——比单 SigLIP/CLIP 在多物体语言 grounding 任务上强约 10%。\n- <bos_lang>...<eos_lang>:语言指令走 Llama tokenizer,模板 'What should the robot do to {task}? A:'。这是标准 VLM 的 prompt 格式,让动作预测被框成'回答问题'。\n- <bos_action>...<bos_action>:7 个离散 action token,每维 256 bin。bin 宽用训练数据 1%/99% 分位定(非 min-max,抗 outlier)。这 256 个 token 覆写 Llama tokenizer 词表最后 256 个最少用的 token(因 Llama 只留 100 个 special token 不够 256)。用标准 next-token cross-entropy loss 只在 action token 上算。\n\n三个坑:(1) language 和 action 都是 LLM 的序列 token,统一自回归——这点和 π0.7/Qwen-VLA 不同,后两者 action 是 DiT 连续张量;(2) 多视角不支持,单图输入,论文自承是局限;(3) 训练和推理序列一致(都单图+语言→7 action token),但训练用 GT action teacher forcing,推理用模型自回归生成 7 个 token 再 de-tokenize;无 action chunk 意味着每步都要完整前向,6Hz 是单步延迟。"
+  },
+  "datasets": [
+    {
+      "name": "Open X-Embodiment(主)",
+      "size": "970k 轨迹",
+      "note": "从 70+ 机器人数据集筛选:单臂末端控制+至少 1 第三人称相机;用 Octo 的 mixture weight 平衡本体/任务/场景;DROID 试过 10% 权重但 action token accuracy 低,后 1/3 训练移除"
+    },
+    {
+      "name": "Prismatic-7B 预训练(VLM 阶段)",
+      "size": "LLaVA 1.5 混合 ~1M",
+      "note": "image-text + text-only,开源数据;DINOv2/SigLIP/Llama 2 各自 Internet 预训练(闭源数据)"
+    }
+  ],
+  "architecture": {
+    "backbone": "Prismatic-7B VLM = DINOv2 + SigLIP 融合视觉编码器(600M)+ 2 层 MLP projector + Llama 2 7B LLM",
+    "params": "7B(Llama 2 7B 主导);视觉编码器 600M;projector 小(2 层 MLP)",
+    "type": "VLA:VLM fine-tune + 离散 action token next-token 预测(无 action chunk,无 DiT,无 flow matching)",
+    "key_components": [
+      "视觉编码器(600M,DINOv2+SigLIP):输入 224×224,分别过 DINOv2(patch 14,低层空间)和 SigLIP(patch 14,高层语义),patch 特征 channel-wise concat;DINOv2 加空间推理能力,SigLIP 加语义泛化",
+      "MLP Projector(2 层):把融合视觉特征映射到 Llama 词嵌入空间,作为 visual token 进 LLM",
+      "Llama 2 7B LLM backbone:标准 transformer,处理 visual token + 语言 token,自回归预测 7 个 action token",
+      "Action discretization:7 维动作每维 256 bin,1%/99% 分位定 bin 宽(抗 outlier),覆写 Llama 词表最后 256 token",
+      "Action de-tokenizer:把预测的 7 个离散 token 映射回连续 7 维动作值",
+      "无 action expert / DiT / flow matching:动作直接走 LLM token 通道,简单可扩展"
+    ],
+    "why_this_design": "三个理由选 VLM fine-tune + action token 路线:(1)在 Internet-scale VL 数据上对齐视觉和语言组件,继承 web 先验;(2)用通用 VLM 架构而非定制机器人架构,可借 LLM 训练基础设施(FSDP/AMP/FlashAttention)和生态(LoRA/量化/HuggingFace),最小代码改动 scale 到 billion 参数;(3)给机器人一条直接受益于 VLM 快速改进的路径。选 Prismatic-7B 因 DINOv2+SigLIP 融合在多物体语言 grounding 任务比单 SigLIP/CLIP 强约 10%,且代码模块化。离散 action token 而非连续 head 因简单——直接用 next-token cross-entropy,无需 DiT/flow matching 额外组件。这是'最简单可扩展的 VLA'设计哲学。",
+    "numerical_sense": {
+      "dit_vlm": "Llama 2 7B:32 layers × 32 heads,hidden 4096,ffn 11008;标准 transformer decoder",
+      "dit_action": "无独立 action expert;action 走 LLM token 通道,7 token/步",
+      "vision_encoder": "DINOv2-base(patch 14,embed 768)+ SigLIP(patch 14,embed 1152)→ concat → MLP 投到 Llama 4096;共 600M",
+      "resolution": "224×224(试过 384 无性能差异但训练慢 3×,故选 224)",
+      "vae": "无 VAE;视觉编码器直接出 patch token",
+      "per_frame_latent_dim": "224×224 / patch14² → ~256 patch token/视角(DINOv2+SigLIP 各一);concat 后经 MLP 投到 4096",
+      "chunk": "无 action chunk;单步 7 token 预测;无 receding horizon 控制(论文自承是局限,Diffusion Policy 用 T=16/X=8 chunk)",
+      "context": "单图 + 单语言指令;无历史帧无 episodic memory(论文列为未来工作)",
+      "action": "7 维单步:Δx,Δy,Δz(3 位移)+Δroll,Δpitch,Δyaw(3 Euler)+gripper(1 二值);每维 256 bin,1%/99% 分位归一化;WidowX/Google Robot/Franka 7-DoF 单臂末端控制",
+      "training": "64×A100 × 14 天 = 21,500 A100-hours;batch 2048;27 epochs;lr 2e-5 固定无 warmup;action token accuracy 训到 95%+;fine-tune vision encoder 至关重要(冻结掉性能);FSDP+AMP+FlashAttention"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 1,
+      "title": "Overview",
+      "caption_original": "We present OpenVLA, a 7B-parameter open-source vision-language-action model (VLA), trained on 970k robot episodes from the Open X-Embodiment dataset. OpenVLA sets a new state of the art for generalist robot manipulation policies.",
+      "what_it_shows": "门面图。970k robot episodes → ViT+Llama 2 7B base VLM → OpenVLA。支持多机器人 out-of-the-box + 高效 fine-tune 到新域。强调 fully open-source(Data/Weights/Code)。下方示例:用户 'Wipe the table' → OpenVLA 出 [Δx, Δy, Δz, Δθ, Δ, Grip] 7 维动作。核心信息:7B 开源 VLA,7× 少参数超 55B RT-2-X。",
+      "image_path": "figures/p01.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 4,
+      "title": "Architecture(最重要)",
+      "caption_original": "OpenVLA model architecture. Given an image observation and a language instruction, the model predicts 7-dimensional robot control actions. The architecture consists of three key components: (1) a vision encoder that concatenates DinoV2 and SigLIP features, (2) a projector that maps visual features to the language embedding space, and (3) the LLM backbone, a Llama 2 7B-parameter large language model.",
+      "what_it_shows": "全文最该看。三组件:(1)视觉编码器=DINOv2(patch)+SigLIP(patch)channel-wise concat;(2)MLP projector 映射到 Llama 词嵌入空间;(3)Llama 2 7B LLM。输入图像+语言 'Put eggplant in bowl' → 模板 'What should the robot do to {task}? A:' → LLM 自回归出 7 个 action token → Action De-Tokenizer → 7D 机器人动作(Δx,Δy,Δz,Δθ 等)。一张图说清:无 DiT,无 action chunk,action 直接走 LLM token 通道。这是'最简单可扩展 VLA'的设计图。",
+      "image_path": "figures/p04.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 7,
+      "title": "BridgeData V2 WidowX 评测",
+      "caption_original": "BridgeData V2 WidowX robot evaluation tasks and results. We evaluate OpenVLA and prior state-of-the-art generalist robot policies on a comprehensive suite of tasks covering several axes of generalization, as well as tasks that specifically assess language conditioning ability.",
+      "what_it_shows": "BridgeData V2 WidowX 上 17 任务评测结果(170 rollouts)。5 类泛化:visual(未见背景/干扰/外观)、motion(未见位置/朝向)、physical(未见大小/形状)、semantic(未见物体/指令/Internet 概念)、language grounding(多物体场景操纵指定物体)。OpenVLA 在除 semantic 外所有类别超 RT-2-X,RT-1-X/Octo 几乎全崩(0-2 success/10)。核心:7B OpenVLA 在多数类别超 55B RT-2-X,只因 RT-2-X Internet 预训练规模更大且 co-fine-tune 保先验故 semantic 类仍领先。",
+      "image_path": "figures/p07.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 4",
+      "page": 8,
+      "title": "Google Robot 评测",
+      "caption_original": "Google robot evaluation results. We evaluate generalist robot policies on in-distribution and out-of-distribution (OOD) tasks on the mobile manipulator used in RT-1 and RT-2 evaluations.",
+      "what_it_shows": "Google Robot(移动平台)上 in-distribution + OOD 评测(60 rollouts)。OpenVLA 与 RT-2-X 持平(78.3 vs 72.0 OOD,85.0 vs 88.0 ID),都显著超 RT-1-X(26.7/33.3)和 Octo(32.0/44.0)。Move Coke Can to Taylor Swift 任务展示 semantic 泛化(Taylor Swift 是 Internet 概念不在机器人数据)。核心:7B OpenVLA 在 Google Robot 上匹配 55B RT-2-X。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 5",
+      "page": 9,
+      "title": "新机器人 fine-tune 适配",
+      "caption_original": "Adapting to new robot setups. We evaluate the state-of-the-art Diffusion Policy trained from scratch on seven Franka Emika Panda tasks, as well as generalist robot policies Octo and OpenVLA fine-tuned on the same data.",
+      "what_it_shows": "Franka-Tabletop + Franka-DROID 上 7 任务 fine-tune(10-150 demonstrations)。3 类:narrow single-instruction、diverse multi-instruction、visual robustness。Diffusion Policy 在窄单指令任务强(动作平滑精确),OpenVLA 在多样多指令任务强(语言 grounding)。OpenVLA 是唯一所有任务都 ≥50% 的方法,且 aggregate 最高。核心:OpenVLA 是 downstream fine-tune 的强默认初始化,尤其涉及多样语言指令;窄高灵巧任务 Diffusion Policy 仍优。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 10,
+      "title": "推理速度 + 量化",
+      "caption_original": "OpenVLA inference speed for various GPUs. Both bfloat16 and int4 quantization achieve high throughput, especially on GPUs with Ada Lovelace architecture (RTX 4090, H100).",
+      "what_it_shows": "不同 GPU 上 bfloat16 vs int4 的推理频率。RTX 4090/H100(Ada Lovelace)上最高吞吐。int4 量化在多数 GPU 上因减少显存传输而比 int8 更快。核心:OpenVLA 可在消费级 GPU(RTX 4090/A5000)上实时推理,无需服务器卡;4bit 量化性能不掉(71.9% vs bfloat16 71.3%)且显存 7GB(可跑在更多消费卡上)。这是 VLA 民主化的关键证据。",
+      "image_path": "figures/p10.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 7",
+      "page": 22,
+      "title": "BridgeData V2 评测任务图例",
+      "caption_original": "BridgeData V2 evaluation task illustrations.",
+      "what_it_shows": "BridgeData V2 WidowX 17 个评测任务的视觉图例,对应 Figure 3 的数值。展示每个任务的具体场景(放茄子进锅/叠杯/翻锅/举电池/移头骨等)。强调评测比 prior work 更难——末端执行器初始化在固定位置(非直接在目标上方),要水平 reach。这是 RT-1-X/Octo 比 prior work 报告低的原因。",
+      "image_path": "figures/p22.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 8",
+      "page": 25,
+      "title": "原 BridgeData V2 sink 任务",
+      "caption_original": "Original BridgeData V2 sink environment tasks. Images from sample demonstrations in the sink environment from the original BridgeData V2 dataset reveal that all demonstrations in this environment were initialized such that the robot's end-effector was positioned immediately above the target object.",
+      "what_it_shows": "原 BridgeData V2 sink 环境的 7 个训练任务示例(Flip Pot/Put Carrot on Plate 等)。关键观察:训练数据里末端执行器都初始化在目标正上方,而 OpenVLA 评测初始化在固定位置要水平 reach。这解释了为何 prior work(如 Octo)在 OpenVLA 评测 suite 上比原报告低——评测更难,要求更强泛化。是 Figure 3/7 评测口径的对照。",
+      "image_path": "figures/p25.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 9",
+      "page": 27,
+      "title": "Google Robot 评测任务图例",
+      "caption_original": "Google robot evaluation task illustrations.",
+      "what_it_shows": "Google Robot(移动平台)评测任务的视觉图例,对应 Figure 4 数值。展示 in-distribution 和 OOD 任务的具体场景(移可乐到 Taylor Swift 海报/Pick Coke Can 等)。Taylor Swift 任务是 semantic 泛化测试——Internet 概念不在机器人数据。是 Figure 4 评测口径的图例。",
+      "image_path": "figures/p27.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 10",
+      "page": 29,
+      "title": "Franka fine-tune 任务图例",
+      "caption_original": "Franka fine-tuning task illustrations.",
+      "what_it_shows": "Franka-Tabletop + Franka-DROID 上 7 个 fine-tune 任务的视觉图例,对应 Figure 5 数值。展示具体任务场景(put carrot in bowl/pour corn/multi-instruction 等)。强调这些是 OpenVLA fine-tune 适配新本体的目标任务,Franka 7-DoF 单臂。是 Figure 5 评测口径的图例。",
+      "image_path": "figures/p29.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 11",
+      "page": 31,
+      "title": "Franka 评测环境",
+      "caption_original": "Franka evaluation environments.",
+      "what_it_shows": "Franka-Tabletop(固定桌面 5Hz)和 Franka-DROID(可移动站立桌 15Hz)两个 fine-tune 评测环境的硬件照片。说明 OpenVLA 能适配不同控制频率和本体配置。是 Figure 5 硬件对照。",
+      "image_path": "figures/p31.png",
+      "importance": "supportive"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "VLM fine-tune + 离散 action token next-token 预测",
+      "problem_it_solves": "如何把 VLM 的 Internet-scale 视觉语言先验转移到机器人动作预测,同时保持架构简单可扩展",
+      "how": "把 7 维连续动作每维离散成 256 bin(用 1%/99% 分位定 bin 宽抗 outlier),覆写 Llama tokenizer 词表最后 256 个最少用 token(因 Llama 只留 100 special token 不够 256)。训练用标准 next-token cross-entropy loss 只在 action token 上算。推理时 LLM 自回归生成 7 个 token 再 de-tokenize 回连续值。无 action chunk,单步预测。",
+      "why_it_works": "三个收益:(1)Internet-scale VL 数据对齐视觉语言组件继承 web 先验;(2)通用 VLM 架构借 LLM 训练基础设施(FSDP/AMP/FlashAttention)和生态(LoRA/量化)最小代码 scale 到 billion;(3)直接受益于 VLM 快速改进。Figure 3/4 证明 7B OpenVLA 在 29 任务超 55B RT-2-X 16.5 个点——简单设计+更多数据(970k vs 350k)+融合视觉编码器胜过堆参数。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "DINOv2+SigLIP 融合视觉编码器",
+      "problem_it_solves": "单一视觉编码器(SigLIP/CLIP)在机器人操控上空间推理不够,影响多物体语言 grounding",
+      "how": "输入 224×224 图像分别过 DINOv2(patch 14,低层空间特征,自监督学 robust 视觉特征)和 SigLIP(patch 14,高层语义特征,语言对齐),patch 特征 channel-wise concat,再经 2 层 MLP projector 映射到 Llama 词嵌入空间。",
+      "why_it_works": "Prismatic 论文证明融合比单 SigLIP/CLIP 在多物体语言 grounding 任务强约 10%。OpenVLA 在 BridgeData V2 多物体场景(language grounding 类)超 RT-1-X/Octo 显著——RT-1-X/Octo 用 from-scratch 或单一编码器常操纵错物体。DINOv2 给空间细节(精确抓取位姿),SigLIP 给语义(选对物体)。这是 OpenVLA 关键架构选择。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "LoRA fine-tune:1.4% 参数匹配 full fine-tune",
+      "problem_it_solves": "VLA full fine-tune 需 8×A100 5-15 小时/任务,消费级 GPU 跑不动,阻碍广泛采用",
+      "how": "LoRA(low-rank adaptation)应用到模型所有 linear 层,rank r=32(试过 64 性能无差异)。只训 97.6M 参数(1.4% of 7B),VRAM 59.7GB(batch 16)。单 A100 上 10-15 小时 fine-tune 一任务,比 full fine-tune 省 8× 算力。",
+      "why_it_works": "Table 1 消融:LoRA rank=32 成功率 68.2% vs full FT 69.7%(统计持平),远超 last-layer-only 30.3%、frozen-vision 47.0%、sandwich 62.1%。证明 fine-tune vision encoder 至关重要(冻结掉性能),但 LLM backbone 的低秩更新足够。这是把 LLM 生态 LoRA 工具搬到 VLA 的标杆,让 VLA 在消费级 GPU 上 fine-tune 成立。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "4bit 量化推理:显存减半性能不掉",
+      "problem_it_solves": "7B 模型 bfloat16 推理需 15GB 显存,消费级 GPU(如 A5000 8GB)跑不动",
+      "how": "用 LLM serving 的量化技术(QLoRA 类)加载 4bit 权重。bfloat16/int4 在 BridgeData V2 8 任务上对比。",
+      "why_it_works": "Table 2:bfloat16 71.3%/16.8GB,int4 71.9%/7.0GB——4bit 性能持平且显存减半。int8 58.1%/10.2GB 反而掉,因 8bit 量化开销慢(A5000 1.2Hz 改变系统动态),4bit 因减少显存传输反快(A5000 3Hz 更匹配训练 5Hz)。这让 OpenVLA 在 7GB 显存消费卡上跑,是 VLA 民主化关键。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "训练 recipe:27 epochs + fine-tune vision encoder + 2e-5 lr",
+      "problem_it_solves": "VLA 训练超参和 LLM/VLM 不同,需专门研究",
+      "how": "在 BridgeData V2 上做小规模消融定 recipe:(1)27 epochs(LLM/VLM 通常 1-2 epoch,但 VLA 需更多迭代,action token accuracy 训到 95%+ 才停);(2)fine-tune vision encoder(VLM 习惯冻结,但 VLA 必须解冻,因预训练视觉不含足够细粒度空间细节做精确控制);(3)lr 2e-5 固定无 warmup(同 VLM 预训练);(4)224×224 分辨率(384 无性能差但慢 3×)。",
+      "why_it_works": "这些是 VLA 训练反 LLM 直觉的发现:更多 epoch、解冻视觉、无需 warmup。ablation 证明 fine-tune vision encoder 至关重要(frozen-vision 掉到 47%)。这套 recipe 给后续 VLA 工作(π0/Qwen-VLA 等)提供了基线参照。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "BridgeData V2 WidowX 17 任务平均",
+      "value": "70.6%",
+      "baseline_best": "50.6% (RT-2-X 55B) / 20.0% (Octo) / 18.5% (RT-1-X)",
+      "setup": "170 rollouts,5 类泛化+language grounding"
+    },
+    {
+      "metric": "Google Robot 12 任务(in-distribution)",
+      "value": "85.0%",
+      "baseline_best": "88.0% (RT-2-X) / 33.3% (RT-1-X) / 44.0% (Octo)",
+      "setup": "60 rollouts"
+    },
+    {
+      "metric": "Google Robot OOD",
+      "value": "78.3%",
+      "baseline_best": "72.0% (RT-2-X) / 26.7% (RT-1-X) / 32.0% (Octo)",
+      "setup": "未见物体/任务/背景/概念"
+    },
+    {
+      "metric": "29 任务总平均超 RT-2-X",
+      "value": "+16.5% absolute",
+      "baseline_best": "55B RT-2-X(闭源)",
+      "setup": "WidowX+Google Robot,7B vs 55B"
+    },
+    {
+      "metric": "Franka fine-tune 7 任务 aggregate",
+      "value": "OpenVLA 最高,所有任务 ≥50%",
+      "baseline_best": "Diffusion Policy(窄任务强)/Octo",
+      "setup": "10-150 demonstrations,Franka-Tabletop+DROID"
+    },
+    {
+      "metric": "OpenVLA vs Diffusion Policy(from scratch)",
+      "value": "+20.4% 在多物体语言 grounding 任务",
+      "baseline_best": "Diffusion Policy",
+      "setup": "Franka fine-tune,多样多指令任务"
+    },
+    {
+      "metric": "LoRA fine-tune(rank=32)",
+      "value": "68.2% 成功率",
+      "baseline_best": "69.7% (full FT,统计持平)",
+      "setup": "Franka-Tabletop,1.4% 参数,单 A100 10-15h"
+    },
+    {
+      "metric": "4bit 量化推理",
+      "value": "71.9% 成功率 / 7.0GB VRAM",
+      "baseline_best": "71.3% / 16.8GB (bfloat16)",
+      "setup": "BridgeData V2 8 任务,80 rollouts"
+    },
+    {
+      "metric": "推理频率",
+      "value": "~6Hz (RTX 4090, bfloat16)",
+      "baseline_best": "—",
+      "setup": "无编译/推测解码"
+    },
+    {
+      "metric": "训练算力",
+      "value": "21,500 A100-hours(64×A100 × 14 天)",
+      "baseline_best": "—",
+      "setup": "batch 2048,27 epochs,970k 轨迹"
+    }
+  ],
+  "insights": [
+    "简单设计+更多数据胜过堆参数:7B OpenVLA 在 29 任务超 55B RT-2-X 16.5 个点,因 970k vs 350k 数据 + DINOv2/SigLIP 融合视觉编码器 + 更仔细数据清洗(Figure 3/4)。VLA 不是越大越好,数据和视觉编码器质量更关键。",
+    "VLA 训练反 LLM 直觉:27 epoch(LLM/VLM 通常 1-2)、fine-tune vision encoder(VLM 习惯冻结)、lr 2e-5 无 warmup。这些 recipe 发现给后续 VLA 工作基线参照(§3.4)。",
+    "离散 action token 路线简单可扩展:action 走 LLM token 通道用 next-token CE,无需 DiT/flow matching 额外组件,直接借 LLM 生态(LoRA/量化/HuggingFace/FSDP)。代价是无 action chunk 每步推理 6Hz。",
+    "DINOv2 空间特征 + SigLIP 语义特征融合是多物体 grounding 关键:比单 SigLIP/CLIP 强约 10%,OpenVLA 在 language grounding 类任务显著超 RT-1-X/Octo(§3.1)。",
+    "LoRA 让 VLA 民主化:1.4% 参数匹配 full fine-tune,单 A100 10-15h fine-tune 一任务。4bit 量化显存 7GB 性能不掉。这让 VLA 从服务器集群走向消费级 GPU,是广泛采用的关键(§5.3/5.4)。",
+    "OpenVLA 是 downstream fine-tune 强默认初始化:唯一所有 Franka 任务 ≥50% 的方法,尤其多样语言指令任务;但窄高灵巧任务 Diffusion Policy 的 action chunk + temporal smoothing 仍优(§5.2)。"
+  ],
+  "novelty_vs_peers": [
+    "vs RT-2-X(闭源 55B):OpenVLA 7B 在 29 任务超 RT-2-X 16.5 个点,7× 少参数;且开源支持 fine-tune,RT-2-X 只给推理 API。RT-2-X 在 semantic 泛化仍领先(Internet 预训练规模更大且 co-fine-tune 保先验)。",
+    "vs Octo(开源 93M from-scratch):OpenVLA 用 VLM fine-tune 继承 Internet 先验,Octo 是 from-scratch stitch 组件。OpenVLA 在 BridgeData V2 70.6% vs Octo 20.0%——VLM 先验碾压。",
+    "vs Diffusion Policy(from-scratch IL):Diffusion Policy 窄单指令任务强(action chunk+temporal smoothing 动作平滑),OpenVLA 多样多指令任务强(语言 grounding)。OpenVLA 是更通用默认,Diffusion Policy 适合窄高灵巧。",
+    "vs π0.7/Qwen-VLA(后续 VLA):π0.7 用 860M flow-matching action expert(连续)+多维 context,Qwen-VLA 用 1.15B DiT flow-matching+embodiment prompt 跨本体。OpenVLA 走离散 action token 简单路线,无 action expert 解耦——更简单但牺牲了 action chunk 和多模态动作分布建模。后续工作多继承 OpenVLA 的 VLM fine-tune 框架但换连续 action expert。",
+    "vs RT-2(原 VLA):RT-2 用 PaLI 55B 闭源,OpenVLA 用 Prismatic-7B 开源+融合视觉编码器。OpenVLA 把 RT-2 的'VLM fine-tune 做 action token 预测'路线开源化并加 fine-tune/量化研究。"
+  ],
+  "limitations": [
+    "论文自承:只支持单图观测,无多视角/proprio/历史帧,真实机器人异质传感器输入未支持(p11)。",
+    "论文自承:推理吞吐不足以支撑高频控制(如 ALOHA 50Hz),action chunk 或推测解码是潜在解(p11)。",
+    "论文自承:可靠性仍未达高(典型 <90% 成功率),性能有提升空间(p11)。",
+    "论文自承:因算力限制,许多 VLA 设计问题未充分探索——base VLM 规模影响、VL+action co-training、最佳视觉特征(p11)。",
+    "我们读出:无 action chunk 每步完整前向,6Hz 在高频任务受限;Diffusion Policy 用 T=16/X=8 chunk 在窄灵巧任务更平滑,OpenVLA 未集成此。",
+    "我们读出:离散 action token(256 bin)有量化损失,且无 action 多模态建模(同一状态多种合理动作被平均);后续 π0/Qwen-VLA 用 flow matching 正是补此。",
+    "我们读出:970k OpenX 数据虽多样但仍是机器人示教,没像 π0.7 那样混 autonomous/失败/人类视频/web 数据,数据多样性有上限。",
+    "我们读出:DROID 试过 10% mixture weight 但 action token accuracy 低被移除——暗示 OpenVLA 对高多样性大数据集拟合不足,可能需更大模型或更高 weight(论文承认)。"
+  ],
+  "reproducibility": {
+    "code": "https://openvla.github.io + https://github.com/openvla/openvla",
+    "weights": "HuggingFace 开源",
+    "data": "970k Open X-Embodiment 子集(mixture weight 开源)",
+    "training": "64×A100 × 14 天 = 21,500 A100-hours;PyTorch+FSDP+AMP+FlashAttention;支持 LoRA/量化",
+    "fine_tune": "LoRA 单 A100 10-15h;full FT 8×A100 5-15h",
+    "inference": "bfloat16 15GB(~6Hz RTX 4090);int4 7GB;remote inference server 开源",
+    "real_eval": "WidowX(BridgeData V2)+ Google Robot + Franka-Tabletop + Franka-DROID"
+  },
+  "tags": [
+    "VLA",
+    "open-source",
+    "Llama 2",
+    "DINOv2",
+    "SigLIP",
+    "Prismatic",
+    "action token",
+    "Open X-Embodiment",
+    "LoRA",
+    "quantization",
+    "consumer GPU",
+    "Stanford",
+    "Berkeley"
+  ]
+}

@@ -381,7 +381,7 @@ ul.limitations li {{ color:var(--muted); }}
 </head>
 <body>
 <header class="top">
-  <a class="back-home" href="../index.html" title="返回首页">← Paper Podcast</a>
+  <a class="back-home" href="../index.html" title="返回首页">← Home</a>
   <h1>{escape(card.get('title',''))}</h1>
   <div class="meta">
     {escape('、'.join(card.get('authors',[])[:3]) + (' et al.' if len(card.get('authors',[]))>3 else ''))} · {escape(card.get('affiliation',''))} · {escape(card.get('date',''))} · arXiv:{escape(card.get('arxiv',''))}

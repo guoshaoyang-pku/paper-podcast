@@ -1,0 +1,334 @@
+{
+  "slug": "qwen-vla",
+  "title": "Qwen-VLA: Unifying Vision-Language-Action Modeling across Tasks, Environments, and Robot Embodiments",
+  "authors": [
+    "Qwen Team"
+  ],
+  "affiliation": "Alibaba Qwen Team",
+  "arxiv": "2605.30280",
+  "date": "2026-05-28",
+  "venue": "arXiv preprint (Alibaba Qwen)",
+  "category": "VLA",
+  "one_liner": "把 Qwen3.5-4B VLM 接一个 1.15B DiT flow-matching action expert,用 embodiment-aware prompt(文本描述本体/控制频率/horizon)统一操控、导航、轨迹预测、人类第一视角动作为同一 action-and-trajectory 预测问题,靠四阶段训练(T2A 纯文本→动作解压缩→CPT 多模态→SFT→RL)解决 VLM 已预训练而 DiT 随机初始化的不对称,一个通用模型跨多本体多任务。",
+  "problem": {
+    "what_they_address": "现有具身模型碎片化——操控模型只管桌面/灵巧,导航模型只管 waypoint,各自专属本体。作者要解决:能否把操控、视觉语言导航、轨迹预测、人类第一视角动作建模统一进单个 VLA,跨任务/环境/本体泛化,而不是每个场景训一个专门模型。",
+    "why_prior_work_falls_short": "三个根本困难:(1)任务异质表面——操控要末端位姿/关节/夹爪/灵巧手,导航要 waypoint,人类视频是 MANO 手势,观测格式/控制频率/horizon/动作维度都不同;(2)VLM backbone 已大规模预训练而 DiT action decoder 随机初始化,naive 联合训练浪费算力且不预训练表示被噪声梯度扰动;(3)跨本体要支持不同动作维度/控制约定却不能为每本体单独 head。prior 工作要么单任务专属(NVIDIA/π0.5 操控、NaVid 导航),要么没解决这个 VLM-DiT 不对称的训练稳定性问题。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "visual observation",
+        "type": "image/video",
+        "detail": "单帧或多帧/历史窗;多视角用 <tag_start><image><tag_end> 包裹(ego/cam_left_wrist/cam_right_wrist),VLM 形成 view-aware 表征"
+      },
+      {
+        "name": "language instruction x",
+        "type": "text",
+        "detail": "任务指令,可粗('pick up red cup')可细(fine-grained embodied action caption,13 维标注)"
+      },
+      {
+        "name": "embodiment prompt e",
+        "type": "text",
+        "detail": "模板 'The robot is {robot_tag} with {single/dual arms}[, waist][, and mobile base]. The control frequency is {FPS} Hz. Please predict the next {chunk_size} control actions...';是唯一的本体特定接口"
+      },
+      {
+        "name": "task identifier z",
+        "type": "text",
+        "detail": "可选,标识任务族(manipulation/VLN/trajectory)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "action/trajectory chunk Y_{t:t+H}",
+        "type": "continuous",
+        "detail": "H×K 张量;H 固定预测 horizon,K 固定通道(实际用 c≤K,余下零填充+mask);操控=末端/关节/夹爪,导航=(Δx,Δy,Δθ) waypoint,人类=腕 SE(3)+10 eigengrasps/手"
+      }
+    ],
+    "control_frequency": "按数据集原生频率(如导航 2FPS、合成 50Hz);SFT 操控 H=16/chunk,导航 H=8 waypoint/chunk;action expert 少步 Euler 积分推理,低延迟实时控制",
+    "concat_protocol": "<bos_emb>The robot is {robot_tag} with {arms}[, waist][, and mobile base]. The control frequency is {FPS} Hz. Please predict the next {chunk_size} control actions to execute the following task: {ori_instruction}.<eos_emb><bos_view><|tag_start|><image_ego><|tag_end|><|tag_start|><image_left_wrist><|tag_end|><|tag_start|><image_right_wrist><|tag_end|><eos_view><bos_lang>{instruction x}<eos_lang><bos_hidden>[VLM hidden states, 经 linear 投影到 DiT channel]<eos_hidden><bos_action>[noisy Y_τ ∈ R^{H×K}, 与 VLM hidden 拼接进 DiT joint self-attn]<eos_action>\n\n逐 token 解释:\n- <bos_emb>...<eos_emb>:embodiment-aware prompt,模板化文本描述本体/臂配置/控制频率/horizon。是模型知道'当前在控制什么机器人'的唯一接口。VLN 样本类似写导航约定和 waypoint horizon。这些 token 由 VLM 处理,hidden state 拼进 DiT 作条件。\n- <bos_view>...<eos_view>:多视角图像用 <tag_start>/<tag_end> 包裹,tag 标识相机源(ego/cam_left_wrist/cam_right_wrist)。这让 VLM 形成 view-aware 表征,action expert 可选择 attend 每个视角,无需改架构或加输入通道。\n- <bos_lang>...<eos_lang>:任务指令,粗或细。fine-grained caption(13 维:动作原语/actor/物体/contact 区域/源目标位置/轨迹朝向/夹爪/身体动作)由两阶段 VLM 标注 + 人工校对,约 48k 对。\n- <bos_hidden>...<eos_hidden>:VLM 处理完 prompt+图像后的 hidden states,经一个 linear 层(3.9M 参数)投到 DiT channel 维度,作为 DiT 的条件输入。\n- <bos_action>...<eos_action>:noisy action chunk Y_τ ∈ R^{H×K} 与 VLM hidden 拼接成一条序列,进 DiT joint self-attention + AdaLN timestep + multi-section RoPE。DiT 16 blocks,每 block 70.8M,共 1.13B。flow matching 预测 velocity field,推理少步 Euler 积分。\n\n三个坑:(1) language/embodiment 是 VLM 的序列 token(causal),但 action 是 DiT 的连续张量经 self-attention,不是 token——action expert 与 VLM 通过 hidden state 拼接 + cross 注意,不是统一自回归;(2) 多视角在 VLM 内用 view tag 标识,不在序列层拼接,action expert 选择性 attend;(3) 训练阶段 context 不同:T2A 阶段完全无图像(只文本+embodiment→action),CPT/SFT/RL 才加图像;且每 dataset 保留原生动作格式靠 embodiment prompt 告知,不强制统一物理语义。"
+  },
+  "datasets": [
+    {
+      "name": "Robot Manipulation Trajectories",
+      "size": "74.2% 预训练占比",
+      "note": "公开(RobotSet/Galaxea/AgiBot World/RoboCOIN/RoboMIND V1V2/RDT-1B/DROID/BridgeData V2/RH20T/RT-1/BC-Z)+ 自研 1000h+ 合成 InternData-A1/GR00T-X-Embodiment-Sim;>10,000 小时,涵盖桌面/移动/双臂/灵巧手"
+    },
+    {
+      "name": "Human Egocentric Trajectories",
+      "size": "6.0%",
+      "note": "Ego4D/EPIC-KITCHENS(VITRA 处理)+ EgoDex(829h Apple Vision Pro)+ EgoVerse(1300h/1965 任务)+ Xperience;动作=双腕 SE(3)+10 eigengrasps/手=32 维/步"
+    },
+    {
+      "name": "Navigation Trajectories",
+      "size": "7.5%",
+      "note": "指令跟随 4.3%+物体搜索 2.3%+目标跟踪 1.0%;移动机器人 3-DoF(平移+朝向),2FPS 采样"
+    },
+    {
+      "name": "Synthetic Simulation (自研)",
+      "size": "3.7%",
+      "note": "IsaacLab+cuRobo;VLA 数据 359,848 轨迹(20 场景×10 配置×450 任务×300 轨迹);LA 数据 7.2M 轨迹/14,000 小时(6 任务模板×6 单臂机器人×~200k),用于 T2A"
+    },
+    {
+      "name": "General Vision-Language Data",
+      "size": "3.4%",
+      "note": "captioning/VQA/OCR/interleaved/grounding;防灾难性遗忘,保留 backbone 感知推理"
+    },
+    {
+      "name": "Spatial Grounding (2D)",
+      "size": "2.5%",
+      "note": "2D bbox grounding,强化物体级空间理解"
+    },
+    {
+      "name": "Autonomous Driving VQA",
+      "size": "2.4%",
+      "note": "LingoQA/DriveAction/MMAU/nuScenes-QA/DriveLM 等;时序/环视/语言定位/规划推理"
+    },
+    {
+      "name": "Fine-Grained Embodied Action Caption",
+      "size": "0.2%",
+      "note": "~48k 视频-标注对,13 维细粒度动作描述;两阶段 Qwen3.6-plus 标注+人工校对"
+    }
+  ],
+  "architecture": {
+    "backbone": "Qwen3.5-4B(原生多模态 VLM,早期视觉语言融合,hybrid attention:多数层 gated linear attention + 周期性 grouped-query softmax)+ DiT-based flow-matching action expert(1.15B,16 blocks)",
+    "params": "VLM backbone Qwen3.5-4B;Action expert ~1.15B(16 DiT blocks × 70.8M = 1.13B + action projection MLP 4.9M + VLM→DiT linear 3.9M + timestep embedding 2.8M + output AdaLN 4.7M)",
+    "type": "Unified VLA:VLM backbone(感知推理)+ DiT flow-matching action expert(连续动作生成)+ embodiment-aware prompt conditioning(跨本体) + 四阶段训练(T2A→CPT→SFT→RL)",
+    "key_components": [
+      "VLM backbone(Qwen3.5-4B):早期视觉语言融合,ViT 空间合并的视觉 token 直接 interleave 进文本流;hybrid attention(gated linear 多数层 + grouped-query softmax 周期性)高效编码长多模态序列保全局推理",
+      "Action expert(1.15B DiT):single-stream DiT,把 VLM hidden states 与 noisy action chunk 拼接成一条序列,joint self-attention + AdaLN timestep + multi-section RoPE;16 blocks;flow matching 目标;推理少步 Euler 积分",
+      "Embodiment-aware prompt conditioning:文本模板描述本体/臂配置/控制频率/horizon,是唯一本体特定接口;配合统一 action 表示(零填充+mask)让单一 DiT 处理所有控制模式",
+      "Unified action-and-trajectory representation:Y∈R^{H×K},H 固定 horizon K 固定通道;实际用 c≤K 通道,余零填充;per-channel mask M∈{0,1}^{H×K} 排除填充;每 dataset 保留原生动作格式靠 prompt 告知",
+      "View tagging:多视角用 <tag_start><image><tag_end> 包裹,VLM view-aware 表征,action expert 选择性 attend",
+      "Value head(RL):轻量,mean-pool VLM hidden→scalar,stop-grad 防梯度回传 backbone"
+    ],
+    "why_this_design": "核心论点:操控/导航/轨迹预测表面异质但共享计算结构(ground 语言→视觉→预测未来动作/轨迹),可统一进单模型。三个设计支柱:(1)embodiment-aware prompt + 统一 action 表示(零填充+mask)让单一 DiT 跨本体无需 per-embodiment head;(2)DiT action expert 与 VLM 解耦设计,专家专注细粒度连续动作多模态高频动态,保留 backbone 预训练能力;(3)四阶段训练解决 VLM 已预训练而 DiT 随机初始化的不对称——T2A 先纯文本→动作建结构化先验(语言选动作空间区域,embodiment prompt 定平台运动参数),CPT 再视觉 grounding,SFT 任务专精,RL 闭环成功优化。这把'动作学习是结构化解压缩'的视角工程化。",
+    "numerical_sense": {
+      "dit_vlm": "Qwen3.5-4B,原生多模态;hybrid attention(gated linear 多数层 + grouped-query softmax 周期性);ViT 空间合并视觉 token interleave 进文本流",
+      "dit_action": "1.15B;16 DiT blocks × 70.8M = 1.13B;action projection MLP 4.9M;VLM→DiT linear 3.9M;timestep embedding 2.8M;output AdaLN 4.7M",
+      "resolution": "图像经 ViT 空间合并(具体分辨率论文未明,典型 448 级);导航 2FPS 采样;合成 50Hz",
+      "vae": "无独立 VAE(非 latent diffusion);action expert 直接在 raw action 空间做 flow matching,action 经 per-dataset quantile 归一化到[-1,1]",
+      "per_frame_latent_dim": "VLM hidden→DiT channel 经 linear(3.9M);action chunk Y∈R^{H×K},H 固定 horizon,K 固定通道(c≤K 实际用)",
+      "chunk": "SFT 操控 H=16 action steps/chunk;导航 H=8 waypoint/chunk;合成轨迹 50Hz;RL H=16,温度 τ=1.0 训练/0.6 评测",
+      "context": "多视角观测+embodiment prompt+instruction;无长历史 episodic memory(论文列为未来工作);navigation 有历史窗(指令跟随/搜索/跟踪)",
+      "action": "操控:ΔEEF(Δx,Δy,Δz)+Euler/quaternion+abs joint+gripper+dexterous hand;导航:(Δx,Δy,Δθ)/waypoint;人类:腕 SE(3)(6维/手)+10 eigengrasps/手=32维/步;每 dataset quantile 归一化",
+      "training": "四阶段:T2A(冻结 VLM 训 DiT,纯文本+embodiment,2000 步,Sig-Norm timestep)→CPT(解冻两模块,异质混合)→SFT(双轨:多任务+真实机器人,VL loss 0.1/action loss 1.0)→RL(PPO+GAE,γ=0.99 λ=0.95 ε=0.2,SimplerEnv 稀疏二值奖励,128 并行环境,N×8×8=8192 transition/iter,value head lr 1e-4/actor 5e-6);log-prob 用 probability-flow ODE→SDE 转换"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 1,
+      "title": "Overview",
+      "caption_original": "Overview of Qwen-VLA, a unified embodied model trained on mixed manipulation, navigation, and vision-language understanding data to generate both robot actions and textual responses.",
+      "what_it_shows": "门面图。Qwen3.5 VLM 接 DiT action expert(Noisy Action→MLP→Diffusion Transformer N×→Clean Action)。Qwen-VLA 同时支持 VLA(操控)+VLN(导航)+VL(视觉语言理解)。输入:observed images + prompt,输出 robot actions 或 textual responses。核心信息:一个模型统一三类任务,不是三个 head。",
+      "image_path": "figures/p01.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 6,
+      "title": "四阶段训练 recipe(最重要)",
+      "caption_original": "Training recipe of Qwen-VLA. Stage I (T2A) trains the DiT action decoder to reconstruct actions from text alone, building a structured action prior without visual input. Stage II (CPT) unfreezes both modules to ground this prior in visual observations. Stage III (SFT) branches into multi-task and real-robot tracks, and Stage IV (RL) optimizes closed-loop task success via environment rewards.",
+      "what_it_shows": "全文最该看。四阶段:(I)T2A 冻结 VLM,DiT 仅从文本+embodiment 重建动作(无图像)→建结构化动作先验;(II)CPT 解冻两模块,视觉 grounding;(III)SFT 双轨(多任务+真实机器人);(IV)RL 环境奖励优化闭环成功。每阶段闭合前一阶段的能力缺口。这张图把'动作学习是结构化解压缩'的视角工程化——T2A 学语言→动作的解压映射,CPT 才加视觉。",
+      "image_path": "figures/p06.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 11,
+      "title": "ROBOINF 合成数据示例",
+      "caption_original": "Examples of data generated through ROBOINF. The top row shows a short-horizon task, 'Place the two green staplers side by side.' The bottom row shows a long-horizon task, 'Group the drinks together and leave the cleaning sponge by itself.'",
+      "what_it_shows": "ROBOINF 合成数据生成示例。上:短程任务(place two green staplers side by side)的 reaching→grasping→placing→completed 序列。下:长程任务(group drinks + leave sponge)分解为 pick/place 7Up→pick/place Red Bull→pick/place sponge 的子任务段。展示合成数据覆盖原子技能+组合指令,且轨迹自然分解为中间阶段做多粒度监督。",
+      "image_path": "figures/p11.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 4",
+      "page": 17,
+      "title": "ALOHA 真实评测任务",
+      "caption_original": "Overview of real-world evaluation tasks on the ALOHA bimanual platform.",
+      "what_it_shows": "ALOHA 双臂真实评测任务全览。6 个 in-domain 任务(pick&place/table cleaning/bowl stacking/bowl pick&place/towel folding/fine-grained)+ 5 类 OOD(color/instance/position/background/instruction generalization)。定义了 Table 5/6 所有真实结果的评测口径——OOD 是 5 正交维度,不是简单换背景。",
+      "image_path": "figures/p17.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 5",
+      "page": 21,
+      "title": "Qwen-VLA-Base OOD 定性",
+      "caption_original": "Qualitative out-of-distribution generalization of Qwen-VLA-Base on the ALOHA dual-arm robot. Top-left: color-conditioned grasping. Top-right: novel object manipulation and compositional clean-up. Bottom-left: unseen object interaction. Bottom-right: background robustness.",
+      "what_it_shows": "Qwen-VLA-Base(未 SFT)在 ALOHA 上的 4 类 OOD 定性。左上:颜色条件抓取(绿/蓝/红/黄球都正确)。右上:未见物体(西兰花/玩具鸭)+ 组合 clean up table(蓝伞/玩具鸭/瓶装酸奶顺序入筐)。左下:完全未见物体交互(墨镜/毛绒娃娃/玩具鸭,approach 动作训练里几乎没有)。右下:未见黄色背景下开笔帽放笔帽(灵巧两阶段)。证明预训练的视觉语言先验迁移到操控,即使无 in-domain 示教。",
+      "image_path": "figures/p21.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 22,
+      "title": "T2A 消融(核心 insight)",
+      "caption_original": "T2A pretraining ablations. (a) Data composition and prediction mode. (b) Flow-matching timestep distribution. (c) T2A training duration.",
+      "what_it_shows": "三组 T2A 消融支撑'动作学习是解压缩'论点。(a)20% 合成+80% 真实(去图)最佳 71.09%;full-sequence > chunk(+4.94pp);T2A 加图反而 -2.87pp(让 decoder 走视觉捷径,稀释语言-动作先验)。(b)Sig-Norm(T2A)+Beta(SFT)最佳 71.09%;反过来都掉——T2A 无视觉引导时中间 timestep 信噪比最 informative,SFT 有 VLM 条件时 Beta 更 sample-efficient。(c)2000 步最佳,40000 步过拟合掉到 60.42%。这张图决定性证明 T2A 必须无视觉且不能训太久。",
+      "image_path": "figures/p22.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 7",
+      "page": 23,
+      "title": "VL 共训练 + 预训练 DiT 迁移",
+      "caption_original": "Vision-language co-training ablations. (a) Impact of VL data on action learning. (b) Transferability of pretrained DiT.",
+      "what_it_shows": "两组共训练消融。(a)VLA-Only vs VL+VLA:简单 benchmark(Libero/Simpler)持平,需细粒度物体识别和组合指令的(RoboCasa +4.9pp/RoboTwin +4.6pp)VL+VLA 明显赢——证明 VL 共训练无干扰且在难任务有用。(b)预训练 DiT vs from-scratch DiT(都接 Qwen3.5-4B):预训练 DiT 全程更快收敛且更高峰值。证明 T2A 学的先验可迁移到新 VLM,不是绑定特定 backbone。",
+      "image_path": "figures/p23.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "Embodiment-aware prompt conditioning + 统一 action 表示(零填充+mask)",
+      "problem_it_solves": "单一模型要支持多本体(单臂/双臂/人形/移动平台/人类),它们动作维度/控制约定/horizon 都不同,不能为每本体单独 head",
+      "how": "每训练样本前缀文本 prompt(模板描述 robot_tag/arms/waist/mobile base/FPS/chunk_size),是唯一本体特定接口。action 用统一张量 Y∈R^{H×K}(H 固定 horizon,K 固定通道),实际 c≤K 通道放前 c 维,余零填充;per-channel mask M∈{0,1}^{H×K} 排除填充进梯度。每 dataset 保留原生动作格式(ΔEEF/abs joint/gripper/dexterous hand/waypoint/MANO)靠 prompt 告知,不强制统一物理语义。每 dataset 用 1%/99% 分位 quantile 归一化到[-1,1]。",
+      "why_it_works": "Table 10 消融:Multi-MLP/Concat/Zero-Pad 三种 projection 在 Bridge/Robocasa 上差异 <1.2pp,Zero-Padding 参数最少(2h·dmax vs 2h·Σdi)故选默认。证明一旦建立共享 latent 空间,projection 设计影响有限——embodiment prompt 才是关键。这让单一 DiT 跨本体无需架构改动。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "T2A:纯文本→动作的结构化解压缩先验",
+      "problem_it_solves": "VLM 已预训练而 DiT 随机初始化,naive 联合训练浪费算力且噪声梯度扰动 VLM;且动作分布维度远高于语言描述,需先建语言索引的动作先验",
+      "how": "Stage I 冻结 VLM,只训 DiT,条件是文本+embodiment prompt,故意不给图像。DiT 学语言选动作空间区域、embodiment prompt 调制任务意图到平台运动程序、flow-matching 动力学。2000 步,Sig-Norm timestep 分布(中间 timestep 信噪比最 informative 因无视觉引导)。数据用 20% 合成+80% 真实(去图)。",
+      "why_it_works": "Fig.6 三组消融决定性:(a)T2A 加图反而 -2.87pp(decoder 走视觉捷径稀释语言-动作先验);(b)Sig-Norm(T2A)+Beta(SFT)最佳 71.09%,反过来都掉;(c)2000 步最佳,40000 步过拟合。Fig.7(b)预训练 DiT 接新 VLM 仍比 from-scratch 全程优——证明 T2A 学的先验可迁移不绑 backbone。这是论文最核心的训练创新。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "DiT flow-matching action expert:连续动作多模态高频动态",
+      "problem_it_solves": "VLM token 离散,机器人动作连续高维多模态(同一任务多种执行策略),需专门 decoder 捕获",
+      "how": "1.15B single-stream DiT,16 blocks(70.8M/each)。把 VLM hidden states(经 3.9M linear 投影)与 noisy action chunk 拼接成一条序列,joint self-attention + AdaLN timestep + multi-section RoPE。flow matching 目标预测 velocity field v_θ,推理少步 Euler 积分。per-channel per-step loss 两级平均(每 active 通道 MSE 再 c 通道均匀平均)防 padding 主导梯度。",
+      "why_it_works": "解耦设计让 action expert 专注细粒度连续动作多模态高频动态,保留 backbone 预训练能力。flow matching 比 diffusion 采样少步低延迟。Table 11 显示 RL 后 SimplerEnv +2.9pp,DOMINO(零样本动态)SR 25.7→26.6/MS 39.1→39.5——证明 flow-matching 出的 action chunk 减少 hesitation,在窄时间窗精确行动。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "四阶段训练:T2A→CPT→SFT→RL 闭合能力缺口",
+      "problem_it_solves": "VLM-DiT 不对称 + 动作学习需多目标(先验/grounding/任务专精/闭环成功),naive 一锅训不稳定",
+      "how": "T2A(冻结 VLM 训 DiT,纯文本建先验)→CPT(解冻两模块,异质混合含 sim+real)→SFT 双轨(多任务 VL+manipulation+navigation / 真实机器人 in-house teleop)→RL(PPO+GAE 从 multi-task SFT 出发,SimplerEnv 稀疏二值奖励,128 并行环境,8192 transition/iter)。RL 把 flow-matching 的 deterministic probability-flow ODE 转 SDE 注入受控噪声,使每步成显式 Gaussian 可解析算 log-prob 给 PPO 重要性比。",
+      "why_it_works": "Table 11 累积效果:CPT→SFT 大幅提升(Libero 90.8→97.8,RoboTwin-E 64.3→86.3),SFT→RL 进一步(Simpler 70.8→73.7)。关键是 RL 增益不局限于训练环境——RoboCasa +0.7pp、DOMINO 零样本动态 SR 25.7→26.6,证明 task-success 优化的'decisive 执行+误差恢复'泛化。这是 VLA 把 RL 工程化的标杆做法。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "VL+VLA 共训练:防灾难性遗忘且在难任务有用",
+      "problem_it_solves": "embodied 训练会灾难性遗忘 backbone 的感知推理能力,但纯 action 训练在需细粒度物体识别和组合指令的任务上不够",
+      "how": "预训练混合含 8.5% 辅助 VL 数据(spatial grounding 2.5%/autonomous driving VQA 2.4%/general VL 3.4%/fine-grained caption 0.2%)。SFT 阶段 VL loss 权重 0.1、action loss 1.0。每 mini-batch 按固定比例混所有任务族,每步联合更新 backbone 和 action expert。",
+      "why_it_works": "Fig.7(a):VLA-Only vs VL+VLA 在简单 benchmark(Libero/Simpler)持平无干扰,在需细粒度识别+组合指令的 RoboCasa(+4.9pp)/RoboTwin(+4.6pp)明显赢。证明 VL 共训练既防遗忘又在难任务注入语义先验。这是'统一 VLA'主张的直接证据——VL 和 action 互益而非互斥。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "LIBERO(单臂桌面)",
+      "value": "97.9% (Instruct)",
+      "baseline_best": "98.6% (ABot-M0 specialist) / 97.6% (π0.5)",
+      "setup": "4 splits 通用模型 vs specialist"
+    },
+    {
+      "metric": "RoboCasa-GR1(双臂人形厨房)",
+      "value": "56.7% (Instruct)",
+      "baseline_best": "58.3% (ABot-M0) / 53.3% (Being-H0.5)",
+      "setup": "24 atomic kitchen tasks"
+    },
+    {
+      "metric": "Simpler-WidowX(real-to-sim)",
+      "value": "73.7% (Instruct)",
+      "baseline_best": "64.6% (StarVLA-OFT) / 63.2% (GR00T N1.6)",
+      "setup": "WidowX 单臂"
+    },
+    {
+      "metric": "RoboTwin-Easy/Hard(双臂)",
+      "value": "86.1%/87.2% (Instruct)",
+      "baseline_best": "86.0%/85.0% (ABot-M0 specialist)",
+      "setup": "50 双臂任务"
+    },
+    {
+      "metric": "ALOHA 真实 in-domain 平均",
+      "value": "83.6% (w/ pretrain)",
+      "baseline_best": "71.6% (π0.5) / 48.5% (w/o pretrain 同架构)",
+      "setup": "6 任务,双臂"
+    },
+    {
+      "metric": "ALOHA 真实 OOD 平均",
+      "value": "76.9% (w/ pretrain)",
+      "baseline_best": "41.5% (π0.5) / 36.2% (w/o pretrain)",
+      "setup": "5 类 OOD(color/instance/position/background/instruction)"
+    },
+    {
+      "metric": "VLN R2R Val-Unseen SR/OSR",
+      "value": "57.5% / 69.0% (Instruct)",
+      "baseline_best": "56.9% / 64.2% (StreamVLN)",
+      "setup": "VLN-CE"
+    },
+    {
+      "metric": "VLN RxR Val-Unseen SR/SPL",
+      "value": "59.6% / 47.8% (Instruct)",
+      "baseline_best": "52.9% / 46.0% (StreamVLN)",
+      "setup": "VLN-CE 更难"
+    },
+    {
+      "metric": "SimplerEnv-OOD 静态(零样本任务类型)",
+      "value": "32.0% (Instruct)",
+      "baseline_best": "12.6% (π0.5)",
+      "setup": "6 OOD 任务,仅 pick-and-place 训练"
+    },
+    {
+      "metric": "DOMINO 动态操控(零样本)SR/MS",
+      "value": "26.6% / 39.5% (Instruct)",
+      "baseline_best": "24.1%/36.1% (LingBot-VA) / 17.2%/35.0% (PUMA fine-tuned)",
+      "setup": "35 suite,无动态数据训练,仅当前帧"
+    },
+    {
+      "metric": "RL 后训练累积增益",
+      "value": "Simpler +2.9pp / DOMINO SR +0.9pp MS +0.4",
+      "baseline_best": "SFT only",
+      "setup": "RL 仅在 SimplerEnv,增益泛化到未见环境"
+    }
+  ],
+  "insights": [
+    "动作学习是结构化解压缩:语言指令+embodiment prompt 几个 token 紧凑编码任务意图,对应动作轨迹可能数百高维关节值。T2A 先纯文本→动作建语言索引的先验,CPT 才加视觉——这是解 VLM-DiT 不对称的根本解法(Fig.2/6)。",
+    "T2A 必须无视觉且不能训太久:加图让 decoder 走视觉捷径 -2.87pp;40000 步过拟合掉到 60.42%。2000 步 + Sig-Norm timestep 是甜点(Fig.6)。T2A 学的是结构先验不是轨迹记忆。",
+    "embodiment prompt 是唯一本体接口:一旦建立共享 latent 空间,projection 设计(Multi-MLP/Concat/Zero-Pad)影响<1.2pp,Zero-Padding 参数最少故选默认(Table 10)。这把'多本体'从架构问题变成 prompt 问题。",
+    "VL+VLA 共训练互益非互斥:简单任务持平无干扰,需细粒度识别+组合指令的难任务明显赢(RoboCasa +4.9pp/RoboTwin +4.6pp)(Fig.7a)。统一 VLA 主张的直接证据。",
+    "RL 增益不限于训练环境:SFT→RL 在 SimplerEnv +2.9pp,但 DOMINO 零样本动态(无动态数据训练)SR 也 25.7→26.6——task-success 优化的'decisive 执行+误差恢复'泛化(Table 11)。这是 VLA 把 RL 工程化的关键证据。",
+    "预训练先验可零样本迁移:Qwen-VLA-Base(未 SFT)在 ALOHA 上能抓未见物体(西兰花/玩具鸭)、组合 clean up table、未见背景开笔帽——VL 预训练的物体词汇和视觉多样性迁移到操控(Fig.5)。"
+  ],
+  "novelty_vs_peers": [
+    "vs π0.5/π0.7(PI VLA):π0.7 用 episode metadata+subgoal+coaching 解异质数据,Qwen-VLA 用 embodiment prompt+统一 action 表示解多本体。π0.7 强 coaching 和组合泛化,Qwen-VLA 强跨本体统一和导航+操控+VL 三合一。",
+    "vs DreamZero/HarmoWAM(WAM 路线):WAM 靠 video-action joint 建物理先验,Qwen-VLA 不做 video 预测,直接 VLM→action expert。Qwen-VLA 在 DOMINO 零样本动态 26.6% 超 WAM 风格 LingBot-VA 24.1%,但 WAM 路线的物理先验 Qwen-VLA 没继承。",
+    "vs OpenVLA(开源 VLA):OpenVLA 7B 单 VLM+离散 action token,Qwen-VLA 4B VLM+1.15B flow-matching action expert(连续)+embodiment prompt 跨本体。Qwen-VLA 多任务统一(操控+导航+VL),OpenVLA 专注操控。Qwen-VLA DOMINO 26.6% vs OpenVLA-OFT 6.7%(零样本)。",
+    "vs GR00T N1.6(NVIDIA):GR00T 专精操控 specialist,Qwen-VLA 通用模型在 RoboCasa 56.7% vs GR00T 49.9%,Simpler 73.7% vs 63.2%——通用模型反超 specialist,支持'统一训练不牺牲任务性能'论点。",
+    "vs NaVid/StreamVLN(导航 specialist):Qwen-VLA 在 R2R/RxR 上 SR/SPL 都超 specialist 导航模型,且同时是操控模型——证明操控+导航共训练互益。"
+  ],
+  "limitations": [
+    "论文自承:具身动作数据规模和多样性远小于视觉语言预训练数据,限制长尾物体/环境/本体/接触密集交互的鲁棒性(p26)。",
+    "论文自承:VL 理解+导航+动作生成的联合训练引入优化 trade-off,action 训练会让部分纯 VL 和导航评测小幅回退,需更好的目标平衡/数据课程/模块专精(p26)。",
+    "论文自承:当前评测仍主要短程 benchmark 驱动,长时程易失败的真实部署仍是开放挑战(p26)。",
+    "我们读出:T2A 阶段完全无视觉,建的先验是语言索引的——对视觉歧义大(同语言多视觉场景)的任务,T2A 先验可能不够,需 CPT/SFT 补;论文未给 T2A 先验在视觉歧义任务的消融。",
+    "我们读出:state conditioning 消融(Table 12)显示 proprio 收益 marginal(≤1.3pp)故默认不用,但这是在多视角观测充分前提下;对腕部不可见或遮挡场景,放弃 proprio 可能损失——论文未给此边界分析。",
+    "我们读出:RL 只在 SimplerEnv 单环境做,泛化增益虽在但幅度小(多数 <1pp),且依赖 SimplerEnv 的稀疏二值奖励语义;对奖励难以二值定义的任务(如操控质量)RL 路线未证。",
+    "我们读出:统一 action 表示用零填充+mask,但 K(固定通道)和 H(固定 horizon)的选择论文未详述——对不同本体 horizon 差异大(如导航 2FPS vs 操控 50Hz),固定 H 可能造成某些本体 chunk 过长或过短。"
+  ],
+  "reproducibility": {
+    "code": "https://github.com/QwenLM/Qwen-VLA",
+    "weights": "开源(GitHub)",
+    "project_page": "https://qwen.ai/blog?id=qwenvla",
+    "sim_benchmark": "LIBERO/Simpler/RoboCasa-GR1/RoboTwin 2.0/SimplerEnv-OOD/DOMINO/VLN-CE",
+    "real_eval": "ALOHA 双臂(6 任务 in-domain + 5 类 OOD)",
+    "training": "四阶段 T2A→CPT→SFT→RL;RL 用 RLinf 框架,128 并行环境"
+  },
+  "tags": [
+    "VLA",
+    "unified model",
+    "embodiment-aware prompt",
+    "flow matching",
+    "DiT action expert",
+    "Qwen3.5",
+    "cross-embodiment",
+    "manipulation",
+    "navigation",
+    "T2A pretraining",
+    "Qwen",
+    "Alibaba"
+  ]
+}
