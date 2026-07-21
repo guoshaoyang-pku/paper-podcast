@@ -1,14 +1,8 @@
 # DreamZero：把视频模型变成零样本策略
 
-> 论文：World Action Models are Zero-shot Policies（NVIDIA, arXiv 2602.15922, 2026-02-19）
->
-> 这是一篇口播稿。它基于结构化卡片 `card.json` + `architecture.md` 深度改写，不是论文朗读，也不是 abstract 摘要。目标是让你听完之后，脑子里能建出这篇论文的架构图，记住关键数字，并理解它为什么这么设计。
+2026 年 2 月 19 日，NVIDIA 的 Seonghyeon Ye 等人发布的论文，标题是 World Action Models are Zero-shot Policies。
 
----
-
-## 开场：这篇论文真正要解决什么
-
-这篇论文值得认真听，因为它要解决一个很具体的问题：**现有的 VLA 只能在语义层泛化——换物体、换指令能行；但换一个它没训练过的动作，比如解鞋带，它就失败。**
+这篇论文要解决一个很具体的问题：**现有的 VLA 只能在语义层泛化——换物体、换指令能行；但换一个它没训练过的动作，比如解鞋带，它就失败。**
 
 为什么 VLA 做不到？因为 VLA 是从视觉语言模型 VLM 初始化的，它继承了 web 数据的语义先验，知道"可乐罐是什么、Taylor Swift 在哪"，但没有继承物理动态先验——它学到的是"看见什么就出什么动作"的映射，没有学"我这样做，世界会怎么变"。所以它必须靠大量重复示教，把每个技能覆盖一遍。
 
@@ -129,12 +123,3 @@ Flash 的解法：训练时把 video 的 timestep 偏向高噪声——t_vid 等
 ## 一句话收束
 
 DreamZero 把一个 14B 的视频扩散模型，通过联合 video-action 训练、闭环 KV-cache 替换、和一套包括 Flash 在内的加速栈，变成了 7 赫兹实时闭环的 zero-shot policy。它最有力的论证落在"失败来自视频、不来自动作"这一点上——这把 policy 的改进问题，变成了 video backbone 的改进问题。
-
----
-
-## 引用与核对
-
-- 原文：arXiv 2602.15922，36 页
-- 结构化卡片：`card.json` / `card.md`
-- 架构图：`architecture.md`
-- 全文已抽取：`extracted/dreamzero/full_text.txt`
