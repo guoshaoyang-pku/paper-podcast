@@ -64,6 +64,11 @@ pre.code.protocol { border-left:4px solid var(--accent); }
 .podcast-prose { max-width:780px; }
 .podcast-prose h2 { color:var(--accent); }
 .podcast-prose pre.code { background:#fff; color:var(--ink); border:1px solid var(--line); }
+.audio-player { background:var(--soft); border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; }
+.audio-player h3 { margin:0 0 12px; color:var(--accent); }
+.audio-player audio { display:block; }
+.audio-player .dur { margin:8px 0 0; color:var(--muted); font-size:13px; }
 ul.insights li { margin:8px 0; }
 ul.limitations li { color:var(--muted); }
 .footer { text-align:center; color:var(--faint); padding:40px 20px; font-size:13px; }
@@ -526,7 +531,16 @@ ul.limitations li { color:var(--muted); }
           <p class='whatitshows'>两个失败案例。上行为模型生成的未来视频,下行为实际执行。模型生成的视频错了(如动作方向预测反),机器人忠实执行了错误轨迹。反向证明 action 和 video 对齐很紧——失败主要来自 video 预测错,action 提取本身没问题。这是论文最有力论断之一:'改进 policy 等价于改进 video backbone'。</p>
         </div>
         
-</div></section><section class="tab-panel" id="podcast"><div class="podcast-prose"><h1>DreamZero：把视频模型变成零样本策略</h1>
+</div></section><section class="tab-panel" id="podcast">
+<div class="audio-player">
+  <h3>🎧 音频版</h3>
+  <audio controls preload="metadata" style="width:100%;max-width:560px;">
+    <source src="audio/podcast.mp3" type="audio/mpeg">
+    你的浏览器不支持 audio 元素。<a href="audio/podcast.mp3">下载 MP3</a>
+  </audio>
+  <p class="dur">时长 15:57 · Edge TTS</p>
+</div>
+<div class="podcast-prose"><h1>DreamZero：把视频模型变成零样本策略</h1>
 
 <p>> 论文：World Action Models are Zero-shot Policies（NVIDIA, arXiv 2602.15922, 2026-02-19）</p>
 <p>></p>

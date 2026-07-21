@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from html import escape
 from pathlib import Path
@@ -359,6 +361,11 @@ pre.code.protocol {{ border-left:4px solid var(--accent); }}
 .podcast-prose {{ max-width:780px; }}
 .podcast-prose h2 {{ color:var(--accent); }}
 .podcast-prose pre.code {{ background:#fff; color:var(--ink); border:1px solid var(--line); }}
+.audio-player {{ background:var(--soft); border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; }}
+.audio-player h3 {{ margin:0 0 12px; color:var(--accent); }}
+.audio-player audio {{ display:block; }}
+.audio-player .dur {{ margin:8px 0 0; color:var(--muted); font-size:13px; }}
 ul.insights li {{ margin:8px 0; }}
 ul.limitations li {{ color:var(--muted); }}
 .footer {{ text-align:center; color:var(--faint); padding:40px 20px; font-size:13px; }}
@@ -460,6 +467,30 @@ ul.limitations li {{ color:var(--muted); }}
 
     # Podcast panel
     html_parts.append('<section class="tab-panel" id="podcast">')
+    # audio player if mp3 exists
+    audio_path = slug_dir / "audio" / "podcast.mp3"
+    if audio_path.exists():
+        dur_label = ""
+        ff = shutil.which("ffprobe")
+        if ff:
+            try:
+                r = subprocess.run([ff, "-v","error","-show_entries","format=duration",
+                                    "-of","default=noprint_wrappers=1:nokey=1",
+                                    audio_path.as_posix()], capture_output=True, text=True)
+                dur = float(r.stdout.strip())
+                dur_label = f"{int(dur//60)}:{int(dur%60):02d}"
+            except Exception:
+                pass
+        html_parts.append(f"""
+<div class="audio-player">
+  <h3>🎧 音频版</h3>
+  <audio controls preload="metadata" style="width:100%;max-width:560px;">
+    <source src="audio/podcast.mp3" type="audio/mpeg">
+    你的浏览器不支持 audio 元素。<a href="audio/podcast.mp3">下载 MP3</a>
+  </audio>
+  {f'<p class="dur">时长 {dur_label} · Edge TTS</p>' if dur_label else ''}
+</div>
+""")
     html_parts.append('<div class="podcast-prose">')
     if podcast_md:
         html_parts.append(md_to_html(podcast_md))
