@@ -313,6 +313,9 @@ body {{ margin:0; background:var(--bg); color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
   line-height:1.7; }}
 header.top {{ background:var(--dark); color:#e8f1ee; padding:28px 40px; }}
+header.top .back-home {{ display:inline-block; color:#5eead4; text-decoration:none;
+  font-size:14px; font-weight:600; margin-bottom:14px; }}
+header.top .back-home:hover {{ text-decoration:underline; }}
 header.top h1 {{ margin:0 0 8px; font-size:26px; line-height:1.3; }}
 header.top .meta {{ color:#9fb3ac; font-size:14px; }}
 header.top .meta a {{ color:#5eead4; }}
@@ -378,6 +381,7 @@ ul.limitations li {{ color:var(--muted); }}
 </head>
 <body>
 <header class="top">
+  <a class="back-home" href="../index.html" title="返回首页">← Paper Podcast</a>
   <h1>{escape(card.get('title',''))}</h1>
   <div class="meta">
     {escape('、'.join(card.get('authors',[])[:3]) + (' et al.' if len(card.get('authors',[]))>3 else ''))} · {escape(card.get('affiliation',''))} · {escape(card.get('date',''))} · arXiv:{escape(card.get('arxiv',''))}
