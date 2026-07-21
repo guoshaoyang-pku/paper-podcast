@@ -1,0 +1,13 @@
+# 大文件 / 中间产物，不提交
+extracted/
+*.pyc
+__pycache__/
+.DS_Store
+
+# 音频走 Release 附件，不直接提交
+papers/*/audio/*.mp3
+papers/*/audio/*.wav
+
+# 旧项目目录（迁移遗留）
+tasks/
+journal/

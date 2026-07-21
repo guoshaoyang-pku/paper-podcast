@@ -1,0 +1,140 @@
+# DreamZero：把视频模型变成零样本策略
+
+> 论文：World Action Models are Zero-shot Policies（NVIDIA, arXiv 2602.15922, 2026-02-19）
+>
+> 这是一篇口播稿。它基于结构化卡片 `card.json` + `architecture.md` 深度改写，不是论文朗读，也不是 abstract 摘要。目标是让你听完之后，脑子里能建出这篇论文的架构图，记住关键数字，并理解它为什么这么设计。
+
+---
+
+## 开场：这篇论文真正要解决什么
+
+这篇论文值得认真听，因为它要解决一个很具体的问题：**现有的 VLA 只能在语义层泛化——换物体、换指令能行；但换一个它没训练过的动作，比如解鞋带，它就失败。**
+
+为什么 VLA 做不到？因为 VLA 是从视觉语言模型 VLM 初始化的，它继承了 web 数据的语义先验，知道"可乐罐是什么、Taylor Swift 在哪"，但没有继承物理动态先验——它学到的是"看见什么就出什么动作"的映射，没有学"我这样做，世界会怎么变"。所以它必须靠大量重复示教，把每个技能覆盖一遍。
+
+DreamZero 的核心命题是：**如果你让模型既预测未来视频、又预测动作，让动作变成"从想象的未来里反推出来"的，那你就能从异质、非重复的真实数据里学到泛化策略。** 这条路它走通了，还顺带把一个 14B 的视频扩散模型压到了 7 赫兹实时闭环。
+
+## 它的输入和输出到底是什么
+
+你需要在脑子里先建一个模块图。
+
+输入有三路：**视觉观测**，当前和历史画面，如果是多视角，直接在通道维拼成一帧，不改主干；**语言指令**，一个冻结的文本编码器处理；**本体感受**，机器人自己的关节状态，走一个新增的、参数量很小的 state encoder。
+
+输出有两路，是同时出来的：**未来视频的 latent**，每 chunk 出两个 latent 帧；以及一个 **action chunk**，Agibot 平台是 48 步动作，30 赫兹控制频率，DROID 平台是 24 步，15 赫兹。一个 chunk 跨度固定 1.6 秒。最大上下文能看 6.6 秒。
+
+这两路输出共用同一个主干，这是 DreamZero 最关键的设计——它不是两个 head 各做各的。
+
+### 输入到底怎么拼成一条序列
+
+光说三路输入还不够具体，我把它拆成一条显式的拼接序列，你在脑子里能建出来。
+
+序列大致长这样：开头是 `<bos_context>`，里面是历史 chunk 序列——每个 chunk 是一个 (video latent, action latent) 对，按时间从老到新排，比如 (C_1, A_1)、(C_2, A_2)，一直到当前的上下文边界。然后是 `<eos_context>`。接着 `<bos_lang>` 包语言指令经 text encoder，`<eos_lang>`。再 `<bos_state>` 包当前 chunk 的 proprioceptive state，`<eos_state>`。最后 `<bos_chunk>` 是当前要联合去噪的 [video latent z, action latent a] 对，`<eos_chunk>`。
+
+这里有几个坑要特别说清，不然容易误解。第一，语言指令**不是**像 LLM 那样跟视觉 token 拼在一起做自回归——它是用 cross-attention 注入到每个 DiT block 里，是个条件，不是序列的一部分。真正做序列拼接的，是 chunk 级的 video 和 action 对。
+
+第二，多视角不进入序列拼接，它在更早就被处理掉了——多个视角的图像在通道维拼成一张图，再一起过 VAE 编码成一个 video latent。所以从序列层面看，一个 chunk 就是一个 chunk，不区分视角。
+
+第三，训练和推理时这条序列长得不一样。训练时，历史 chunk 是干净的 teacher-forcing context，里面是真实视频和真实动作的 latent。推理时，这些历史 chunk 的位置在 KV-cache 里被替换成了真实环境的观测——动作是模型自己生成的、但视频是真实世界给的。这就是闭环替换：序列结构没变，但 context 里的内容从"模型预测"换成了"真实观测"。
+
+记住这条序列，后面听别的 WAM 论文你会反复遇到类似的拼接，区别往往就在 context 怎么组织、language 怎么注入、video 和 action 怎么耦合。DreamZero 的答案是：context 是 chunk 级 [video, action] 对，language 是 cross-attention，当前 chunk 的 video 和 action 在同一个 timestep 下联合去噪。
+
+## 架构：一个 14B 的视频扩散模型，加最小的新参数
+
+主干是 Wan2.1-I2V-14B，一个 image-to-video 的 diffusion 模型。DreamZero 的策略是尽量不动它——VAE、文本编码器、图像编码器全冻结，只新增三样小东西：state encoder、action encoder、action decoder。这样做的目的是保住视频模型从 web 视频里学到的物理先验。
+
+训练用 flow matching，也就是让模型预测一个 velocity，把噪声移到干净样本。重点是它对 video latent 和 action latent 是**联合去噪**的：同一个 chunk 内，两者共享 timestep，一起插值、一起预测 velocity，loss 是一起算的。
+
+结构上它选了 **autoregressive，不是 bidirectional**。这一点论文有专门的论证，值得讲。双向 diffusion 要求固定长度序列，但长程示教里语言指令往往只对应任务的一段。你不 subsample，生成的视频只覆盖任务片段，语言和视频对不上；你 subsample，在闭环里从任务中段采样会扭曲原生帧率，视频和动作就对不齐。autoregressive 用视频上下文做条件，既保住语言-视频对应，又保住原生帧率，三模态对齐才稳。顺带一提，AR 加 KV-cache，推理比双向快 3 到 4 倍。
+
+## 给你一个数值 sense：这套模型到底多大
+
+光说 14B 可能没感觉，我把维度念细一点。
+
+主干 DiT 是 14B 参数，hidden dimension 5120，40 层 transformer block，每块 40 个注意力头，feedforward 维度 13824。视频输入分辨率是 480P，实际面积固定、长宽比跟输入图走，典型是 832×480。
+
+VAE 是 Wan 自家的 3D causal VAE，把 raw 视频压到 latent：空间 8 倍下采样（832×480 → 104×60），时间 4 倍下采样（每 4 帧压成 1 个 latent 帧），latent 通道数 16。也就是说每帧 raw 视频大约对应 104×60×16 ≈ 10 万维的 latent，但时间维被压了 4 倍。
+
+回到 DreamZero 的 chunk 设置：每个 chunk K=2 个 latent 帧，对应 8 个 raw 视频帧；视频采样率 5FPS，所以一个 chunk 跨 1.6 秒，跟前面说的 action chunk 跨度一致。默认 M=4 个 chunk 上下文，共 8 个 latent 帧 = 33 个 raw 帧 = 6.6 秒视觉记忆。AgiBot 上视频 5FPS、动作 30Hz、H=48；DROID 上视频 5FPS、动作 15Hz、H=24——两边 chunk 时长都精确锁在 1.6 秒。
+
+动作那边是连续的相对关节位置，论文没给每维具体含义，但 Agibot G1 是双臂移动平台，自由度应该十几到二十几；DROID 用 Franka 单臂 7 自由度加夹爪。action latent 和 video latent 是在同一个 DiT 里联合去噪的，共享 timestep、共享 velocity 预测头——这是"joint"这个词的物理含义。
+
+训练规模：AgiBot 和 DROID 都是 100K steps、global batch 128，更新所有 DiT 块加 state/action encoder/decoder，冻结 text/image encoder 和 VAE。论文试过 LoRA，结果不行，所以是全参数更新。
+
+记住这套数字，后面听其它 WAM 论文时，你可以拿它当标尺：14B DiT、16 通道 latent、K=2/M=4、1.6 秒 chunk、6.6 秒上下文、100K steps × batch 128。这是个非常大的训练量。
+
+## 真正让 WAM 能做实时控制的：闭环 KV-cache 替换
+
+这是 DreamZero 区别于"纯视频生成器"最根本的一点，也是它配叫 policy 的原因。
+
+纯 autoregressive 视频生成有个老毛病——误差累积，越生成越偏。DreamZero 的解法是在闭环里，每生成一个 chunk 的视频加动作、把动作执行掉之后，**用真实环境的观测，把 KV-cache 里那个 chunk 的预测帧替换掉**，再生成下一个 chunk。
+
+也就是说，KV-cache 始终被真实观测不断纠正，误差不累积。视频模型在这里充当"想象下一步"的中间件，动作执行完立刻被真实世界校准。这是它能做 7 赫兹实时控制、而不只是停留在生成漂亮视频层面的根本。
+
+## 38 倍加速是怎么堆出来的
+
+一个 14B 的 diffusion 模型，naive 实现单卡要 5.7 秒一个 chunk，完全没法闭环。论文把加速拆成三层，我按性价比给你念一遍。
+
+**系统层**：CFG 双卡并行，把 conditional 和 unconditional 两个前向分到两张卡，单步延迟降 47%；DiT caching，连续两步预测的 velocity 方向余弦相似度超过阈值就复用，把 16 步有效降到 4 步。
+
+**实现层**：torch.compile 加 CUDA Graphs 消 CPU 开销；NVFP4 量化（Blackwell 上，敏感层 QKV 和 Softmax 保 FP8、非线性保 FP16）；attention 用 cuDNN、scheduler 搬到 GPU 消同步。
+
+**模型层**：这就是 DreamZero-Flash，也是我认为这篇论文里最聪明的一个工程 trick，单独讲。
+
+三层叠加：H100 上 9.6 倍，GB200 上 16.6 倍，加上 Flash 共 38 倍，把 5.7 秒压到 150 毫秒，7 赫兹闭环。
+
+有一点要诚实说：DiT caching 和 NVFP4 这两项不是数学等价，论文只说 minimal quality loss，没给完整精度对照。这是我们读出的局限。
+
+## DreamZero-Flash：一个解耦 noise schedule 的小设计
+
+问题是这样的。标准 DreamZero 训练时，video 和 action 共享 timestep，两者噪声级别一致。但你做 few-step 推理时——比如只跑 1 步——video 还没去噪干净，action 却要从干净的 video 里读条件。训练学和推理用对不上，action 就崩。naive 把 4 步砍到 1 步，table bussing 任务进度从 83% 掉到 52%。
+
+Flash 的解法：训练时把 video 的 timestep 偏向高噪声——t_vid 等于 1 减 η，η 服从 Beta(7,1)，期望 t_vid 是 0.125，也就是模型主要在 video 很脏的条件下训练；action 的 timestep 还是 uniform。等于专门训练模型"video 还很噪时也能输出干净 action"，正好匹配 1 步推理的真实条件。
+
+结果：1 步推理从 52% 恢复到 74%，只比 4 步 baseline 的 83% 低 9 个点，速度 2.33 倍。这是整个论文里杠杆比最高的一个设计。
+
+## 数据哲学：多样性大于重复性
+
+这点很反直觉，值得记住。同样 500 小时数据，一组是 diverse 的——22 个环境、7193 个 episode、平均每个 episode 4.4 分钟 42 个子任务；另一组是 repetitive 的——70 个任务，每个任务大量重复示教。在简单的 pick-and-place 上，diverse 是 50%，repetitive 是 33%。
+
+论文给的解释是：video prediction 主要是从预训练继承的，真正要在机器人数据上学的是 inverse dynamics——从视觉未来反推动作。inverse dynamics 要稳，就需要多样的状态-动作对应，repetitive 数据天然没有。
+
+## 关键结果：不仅赢，而且赢在 VLA 最弱的地方
+
+我挑几个有对照的数字。
+
+**Seen tasks，unseen 环境 + unseen 物体**：Agibot G1 上，DreamZero 平均 task progress 62.2%，最好的 pretrained VLA baseline 是 27.4%。注意这些 baseline 是在数千小时跨本体数据上预训练过的，DreamZero 只用了 500 小时自采数据。从零训的 VLA 基本是 0。
+
+**Unseen tasks，10 个训练里没出现过的任务**，比如解鞋带、熨衣服、画画、握手：Agibot 上 DreamZero 39.5%，pretrained VLA 是 16.3%。DROID-Franka 上 success rate DreamZero 22.5%，GR00T N1.6 pretrained 是 12.5%，π0.5 是 7.5%。
+
+**跨本体迁移**：用 20 分钟 YAM 机器人的 video-only 数据（没有动作标签）共训，unseen tasks 从 38.3% 提到 55.4%；用 12 分钟人类第一视角视频，从 38.3% 提到 54.3%。两条路都涨，robot-to-robot 涨得更多，因为形态更接近。
+
+**Few-shot 新本体适配**：把 Agibot 上训好的 checkpoint，用 55 轨迹、约 30 分钟 YAM play data post-train，就能迁移到全新机器人 YAM 上，还保留 zero-shot 泛化。论文说这是数据效率的新标杆。
+
+## 一个最值得记住的 insight
+
+论文里有一句话，我建议你重点记：**"Most DreamZero failures stem from video generation errors rather than action prediction—the policy faithfully executes whatever trajectory the video predicts."**
+
+翻译过来：DreamZero 失败，主要是 video 预测错了，而不是 action 提取错了——policy 忠实执行 video 描述的轨迹。
+
+这句话分量很重。它意味着两件事：第一，动作和视频已经对齐得很紧，模型没有"乱动"；第二，改进 policy 等价于改进 video backbone。这给了 WAM 路线一个非常直接的 scaling law 论证——video 模型越强，policy 就越强。这是 VLA 路线给不出的论证。
+
+## 局限：别替它过度外推
+
+论文自己承认的：它还是 System 1，视觉记忆只有 6.6 秒，长程推理要靠 System 2 planner 或更长上下文；高精度任务（亚厘米级，比如钥匙插入）仍是 behavior cloning 的通病，diverse pretraining 反而稀释了密集示教；7 赫兹依赖 2 张 GB200，比消费级 GPU 上的 VLA（20 赫兹以上）还是贵。
+
+我们读出的：跨本体实验里 YAM 和 Agibot 都是双臂 parallel gripper，形态接近，收益部分来自此；人类视频迁移在形态差异更大时是否仍成立，论文没证。seen 和 unseen task 的边界依赖人工定义（动作加物体类型），有主观空间。
+
+所以，DreamZero 是 WAM 路线的一个强证据，但它支持的是"world 和 action 应该一起建模"这个方向，不等于工业现场的连续运行、节拍、干预率和 ROI 已经解决。
+
+## 一句话收束
+
+DreamZero 把一个 14B 的视频扩散模型，通过联合 video-action 训练、闭环 KV-cache 替换、和一套包括 Flash 在内的加速栈，变成了 7 赫兹实时闭环的 zero-shot policy。它最有力的论证落在"失败来自视频、不来自动作"这一点上——这把 policy 的改进问题，变成了 video backbone 的改进问题。
+
+---
+
+## 引用与核对
+
+- 原文：arXiv 2602.15922，36 页
+- 结构化卡片：`card.json` / `card.md`
+- 架构图：`architecture.md`
+- 全文已抽取：`extracted/dreamzero/full_text.txt`
