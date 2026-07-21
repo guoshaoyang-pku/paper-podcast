@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Paper Podcast</title>
+    <link>https://guoshaoyang-pku.github.io/paper-podcast/</link>
+    <language>zh-cn</language>
+    <description>研究论文深度解读。每篇 15 分钟口播，听完脑子里能建出论文架构。</description>
+    <itunes:author>Paper Podcast</itunes:author>
+    <itunes:summary>研究论文深度解读。每篇 15 分钟口播，听完脑子里能建出论文架构。</itunes:summary>
+    <itunes:category text="Technology"/>
+    <itunes:category text="Science"/>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:image href="https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/figures/p01.png"/>
+    <image>
+      <url>https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/figures/p01.png</url>
+      <title>Paper Podcast</title>
+      <link>https://guoshaoyang-pku.github.io/paper-podcast/</link>
+    </image>
+    <lastBuildDate>Tue, 21 Jul 2026 11:57:09 +0000</lastBuildDate>
+    <item>
+      <title>World Action Models are Zero-shot Policies</title>
+      <description>把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。 论文解读全文见 https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/index.html</description>
+      <pubDate>Thu, 19 Feb 2026 00:00:00 +0000</pubDate>
+      <guid isPermaLink="true">https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/audio/podcast.mp3</guid>
+      <enclosure url="https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/audio/podcast.mp3" length="14656172" type="audio/mpeg"/>
+      <itunes:duration>15:15</itunes:duration>
+      <itunes:summary>把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。</itunes:summary>
+      <link>https://guoshaoyang-pku.github.io/paper-podcast/dreamzero/index.html</link>
+    </item>
+  </channel>
+</rss>
