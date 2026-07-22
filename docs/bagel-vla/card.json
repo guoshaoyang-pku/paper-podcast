@@ -1,0 +1,352 @@
+{
+  "slug": "bagel-vla",
+  "title": "BagelVLA: Enhancing Long-Horizon Manipulation via Interleaved Vision-Language-Action Generation",
+  "authors": [
+    "Yucheng Hu",
+    "Jianke Zhang",
+    "Yuanfei Luo",
+    "Yanjiang Guo",
+    "Xiaoyu Chen",
+    "Xinshu Sun",
+    "Kun Feng",
+    "Qingzhou Lu",
+    "Sheng Chen",
+    "Yangang Zhang",
+    "Wei Li",
+    "Jianyu Chen"
+  ],
+  "affiliation": "Tsinghua University · ByteDance Seed",
+  "arxiv": "2602.09849",
+  "date": "2026-02-12",
+  "venue": "arXiv preprint (Tsinghua / ByteDance Seed)",
+  "category": "Cascaded WAM",
+  "one_liner": "在 Bagel 统一理解+生成 MoT 底座上接一个 2B action expert,把'语言规划→关键帧预测→动作生成'三步显式交错进一条序列,并用 Residual Flow Guidance(以当前帧为初始噪声做单步去噪)把视觉前瞻的延迟从 6 秒压到 1.23 秒。",
+  "problem": {
+    "what_they_address": "长程操作任务(如按指定顺序叠积木、算术式摆积木)里,全局指令隐含一串子阶段,现有 VLA 把它当黑盒映射,要么只做语言规划缺视觉前瞻,要么只做视觉预测缺逻辑推理。BagelVLA 要让模型显式交错地'想下一步文字→想象下一个关键帧→出动作'。",
+    "why_prior_work_falls_short": "VPP/Cosmos Policy 这类用视频预测做 policy 的方法缺专门 VLM backbone,指令跟随差;RT-2/OpenVLA 这类纯 VLA 没有视觉前瞻,长程任务靠语义硬撑。统一理解生成模型(Bagel/Chameleon/Show-o)有'边想边画'能力但不是为具身控制设计的,且把视觉生成塞进 action 循环会带来 6 秒级延迟(Complete Denoise),完全没法实时。F1 拼了 VLA+IDM 但没做显式交错规划和视觉生成。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "multi-view observations v_t",
+        "type": "image",
+        "detail": "多视角当前观测;Calvin 用 2 视角预测第 3 视角,RoboTwin/真机用 3 视角(主视角+左右腕),SigLIP2 编码理解特征 + FLUX VAE 编码生成特征"
+      },
+      {
+        "name": "global instruction L",
+        "type": "text",
+        "detail": "全局指令,如'按红→黄→蓝→绿顺序叠积木'"
+      },
+      {
+        "name": "proprioception",
+        "type": "vector",
+        "detail": "本体感受,Calvin 不用,RoboTwin/真机用;进 action expert"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "subtask l_t",
+        "type": "text",
+        "detail": "当前子任务文字规划(如'下一个抓红色积木'),理解专家自回归生成"
+      },
+      {
+        "name": "future keyframe v_{t+k}",
+        "type": "image",
+        "detail": "预测的下一个关键帧图像(子任务完成时的视觉目标),生成专家 flow matching 去噪"
+      },
+      {
+        "name": "action chunk a_t",
+        "type": "continuous",
+        "detail": "动作 chunk;Calvin chunk=10,RoboTwin chunk=16(effective horizon 48),真机 chunk=24;双臂 14-DOF"
+      }
+    ],
+    "control_frequency": "推理 1.23s/chunk(单 RTX 5090);真机 action 频率 40Hz(chunk=48);异步执行下 72Hz;action expert 2B 单独激活可 KV-cache",
+    "concat_protocol": "<bos_obs>[ SigLIP2(v_t), VAE(v_t) ]<eos_obs><bos_lang>[ L ]<eos_lang><bos_plan>[ l_t (自回归) ]<eos_plan><bos_keyframe>[ noisy v^τ_{t+k} (FLUX VAE latent) ]<eos_keyframe><bos_action>[ noisy a^τ_t (action chunk) ]<eos_action>\n\n逐 token 解释:\n- <bos_obs>...<eos_obs>:多视角观测 v_t,同时经两个 encoder:SigLIP2 出理解特征给 LLM expert,FLUX VAE 出生成特征给 generation/action expert。多视角采用序列拼接(每个视角一套 token),区别于通道拼接。\n- <bos_lang>...<eos_lang>:全局指令 L,作 LLM expert 的自回归上下文。\n- <bos_plan>...<eos_plan>:子任务规划 l_t,由 LLM expert 自回归生成(Cross-Entropy loss)。推理时先出这段文字,再出关键帧和动作。\n- <bos_keyframe>...<eos_keyframe>:关键帧 noisy latent v^τ_{t+k},经 FLUX VAE,generation expert 用 flow matching 去噪。timestep 服从 LogitNormal(0,1)。RFG 模式下初始噪声用 N(v_t, I)(以当前帧为中心的残差噪声),区别于纯高斯。\n- <bos_action>...<eos_action>:动作 chunk noisy latent a^τ_t,action expert 用 flow matching 去噪,timestep 服从 Beta(1.5,1)(偏向低噪声,加快收敛)。\n\n三个坑:\n1) language 和 plan 都是序列拼接进自回归,这点和 DreamZero/Motus 的 cross-attention 注入不同——BagelVLA 把文本规划当成可生成的 token,显式写在序列里。视觉条件则通过 MoT 共享自注意力注入,不是 token 拼接。\n2) 多视角在序列层拼接(每个视角一套 SigLIP2+VAE token),不是通道拼接。Calvin 预测第 3 视角,RoboTwin/真机预测主视角。\n3) 训练和推理序列结构一致,但 dual flow-matching 的交互方式有三种(Complete/Joint/Single-step),默认用 Single-step RFG:推理时 action expert 只 attend 关键帧第 1 步去噪的 KV-cache,不跑完整 N1 步图像去噪。训练时为对齐推理,action loss 用 v^τ=0_{t+k}(纯噪声)或 RFG 的 N(v_t, I) 作条件。"
+  },
+  "datasets": [
+    {
+      "name": "General VQA (LLaVA-Pretrain + FineVision)",
+      "size": "2.56M QA pairs",
+      "note": "Stage1 语言共训练,保通用语言能力"
+    },
+    {
+      "name": "EgoDex(人类手部视频)",
+      "size": "310k episodes",
+      "note": "Stage1 视觉动态,只预测最终帧,不标注子任务"
+    },
+    {
+      "name": "Open-source Robot(Bridge/Galaxea/RoboTwin/Agibot/GR)",
+      "size": "~640k episodes(382k 语言规划+视觉动态 / 297k 仅视觉动态)",
+      "note": "Seed-1.5-VL-thinking 合成子任务标签和关键帧边界"
+    },
+    {
+      "name": "Self-collected Aloha 真机",
+      "size": "4.5k episodes(预训) + 3k basic + 1.5k long-horizon",
+      "note": "Stage2 finetune,人工标注子任务和关键帧"
+    },
+    {
+      "name": "Calvin ABC-D",
+      "size": "ABC split",
+      "note": "仿真评测,1000 个长度 5 任务,mean completion length"
+    },
+    {
+      "name": "RoboTwin 2.0",
+      "size": "2.5k episodes(50 任务×50)",
+      "note": "Clean+Randomized,50 任务,unseen instructions"
+    }
+  ],
+  "architecture": {
+    "backbone": "Bagel(基于 Qwen2.5-LLM-7B 的统一理解+生成 MoT,7B active/14B total)+ 新增 Action Expert(2B,同 Qwen2.5 架构但 MLP intermediate 缩到 1/5)",
+    "params": "Understanding Expert 7B + Generation Expert 7B + Action Expert 2B = ~16B total(三专家 MoT,共享自注意力)",
+    "type": "Mixture-of-Transformers(三专家)+ 双 Flow Matching(image FM + action FM)+ Interleaved Planning(自回归文字+FM 图像+FM 动作)",
+    "key_components": [
+      "Understanding Expert(7B,Qwen2.5-LLM-7B,hidden 3584,28 layers):自回归生成子任务文字 l_t,CE loss;输入 SigLIP2 视觉特征+文本",
+      "Generation Expert(7B,同 Qwen2.5 架构,hidden 3584,28 layers):flow matching 去噪关键帧,FM timestep LogitNormal(0,1);输入 FLUX VAE 视觉特征+文本+子任务",
+      "Action Expert(2B,hidden 3584,28 layers,MLP intermediate 3584=1/5 of 18944):flow matching 去噪动作 chunk,FM timestep Beta(1.5,1);输入本体感受+动作",
+      "Tri-model Joint Attention(三专家共享多头自注意力,MoT 耦合)",
+      "Dual Flow Matching 交互机制(三种 scheme:Complete/Joint/Single-step,默认 Single-step RFG)",
+      "Residual Flow Guidance(RFG):关键帧初始噪声用 N(v_t, I) 而非 N(0, I),以当前帧为结构先验做单步残差去噪",
+      "Asynchronous Execution:训练时随机用前一帧替换当前帧,推理时只更新本体感受 KV 出新 action chunk,40Hz→72Hz"
+    ],
+    "why_this_design": "用 Bagel 统一底座是为了继承互联网规模的多模态推理和生成先验(理解专家保语言推理,生成专家保图像生成),这是 Cosmos Policy 那种纯视频模型 policy 给不了的。交错规划(文字→关键帧→动作)是把长程任务的全局指令显式分解成因果链,每一步都有显式监督。RFG 是为了解决'把视觉生成塞进 action 循环'带来的 6 秒延迟——不从头生成关键帧,而是以当前帧为残差起点做单步去噪,既给 action expert 提供视觉前瞻特征,又把延迟压到 1.23 秒。Action expert 用 2B 而非 7B,是为了让它能高频跑(40Hz)并支持 KV-cache 异步。",
+    "numerical_sense": {
+      "dit": "三专家均 hidden=3584,28 layers(同 Qwen2.5-LLM-7B 架构);Und/Gen expert intermediate=18944(原 Qwen2.5),Action expert intermediate=3584(缩到 1/5)。总 ~16B。",
+      "resolution": "图像 256×256(VAE 输入),多视角:Calvin 2 视角预测第 3,RoboTwin/真机 3 视角(主+左右腕)预测主视角",
+      "vae": "FLUX VAE 编码图像(256×256→latent);SigLIP2 作理解侧 visual encoder(256×256)。两套独立 visual encoder,理解用 ViT 特征,生成用 VAE 特征。",
+      "per_frame_latent_dim": "FLUX VAE 典型空间 8× 下采样,256×256→32×32,latent channel 16 → 每帧 ~1.6e4 维(SigLIP2 侧是 patch token 序列)",
+      "chunk": "Calvin chunk=10;RoboTwin chunk=16(every 3 steps,effective horizon 48);真机 chunk=24。真机 action 40Hz @chunk=48 → 1.2s/chunk;异步 72Hz",
+      "context": "当前帧 v_t + 全局指令 L + 历史子任务(隐式在自回归里);不显式维护长历史 KV(异步执行时 Und/Gen expert 的 KV 可不更新)",
+      "action": "双臂 14-DOF;Calvin 不用 proprio,RoboTwin/真机用;动作 chunk 连续,flow matching 去噪",
+      "training": "Stage1 预训练:64×A800,batch~1600,20k steps,lr 1e-5,FSDP,只训 Und+Gen expert。Stage2 finetune:Calvin 8×A800 batch192 30k steps;RoboTwin 8×A800 batch128 60k steps;真机 32×A800 batch512 50k steps。三专家同训。image FM 50 步去噪,action FM 10 步去噪(Complete/Joint);Single-step 只 1 步图像+10 步动作。"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 2,
+      "title": "框架总览(混合数据+交错规划)",
+      "caption_original": "Overview of our framework. We present BagelVLA, a unified model that integrates linguistic planning, visual forecasting, and action generation within a single framework. We construct a massive hybrid dataset combining general multimodal data with large-scale robotic datasets. Robotic datasets with sub-tasks and keyframes are annotated to transfer the foundation model's general reasoning and visual generation abilities to embodied settings.",
+      "what_it_shows": "门面图。左侧是混合数据源(通用多模态 QA + 大规模机器人轨迹,机器人数据带子任务和关键帧标注),中间是 BagelVLA 统一模型,右侧是交错规划输出流(文字子任务→关键帧图像→动作)。核心信息:语言/视觉/动作从一个统一底座里交错生成(而非各自独立的模块),且能用通用数据保底座能力。",
+      "image_path": "figures/p02.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 5,
+      "title": "BagelVLA MoT 架构(三专家)",
+      "caption_original": "Illustration of the BagelVLA framework. BagelVLA utilizes a Mixture-of-Transformers (MoT) architecture, comprising three independent transformers specialized for linguistic, visual, and action modalities. To tackle long-horizon tasks and semantic generalization, we formulate language-conditioned action learning as a long-sequence interleaved planning problem.",
+      "what_it_shows": "核心架构图。三个独立 transformer(LLM expert / Generation expert / Action expert)经 MoT 共享自注意力。序列里交错排了观测、全局指令、子任务文字、关键帧 noisy latent、动作 noisy latent。展示 dual flow-matching 怎么在一条序列里同时训两个 FM 任务。配合 Figure 3 的三种 scheme 看。",
+      "image_path": "figures/p05.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 6,
+      "title": "三种 Dual Denoise 方案(核心机制)",
+      "caption_original": "Illustration of different types of dual denoising schemes. (a) Complete Denoise: Image prediction and action generation are performed separately, requiring a total of N1 + N2 denoising steps. (b) Joint Denoise: Image prediction and action generation are performed simultaneously, denoising together for N steps. (c) Single-Step Denoise: Action generation is conditioned directly on the context from the first denoising step of the image prediction.",
+      "what_it_shows": "全文最该看的机制图。三种 image-action FM 交互:(a) Complete 先跑完 N1 步图像去噪再跑 N2 步动作,延迟 6.04s;(b) Joint 两路同步 N 步去噪,延迟 2.90s;(c) Single-step action 只看图像第 1 步的 KV,延迟 1.23s。Table 4 显示 Single-step 不仅最快还最准(3.345 vs Complete 2.480),因为 Complete/Joint 在 OOD 中间态会崩。RFG 是 Single-step 的变体(初始噪声用当前帧)。",
+      "image_path": "figures/p06.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 4",
+      "page": 9,
+      "title": "交错规划真机可视化",
+      "caption_original": "Visualization of interleaved planning results on real-world robotic tasks. Given a global instruction and the current observation, BagelVLA leverages the context to identify the immediate subtask, predicts a goal image for that subtask, and subsequently generates actions.",
+      "what_it_shows": "三个真机任务的交错规划输出:叠积木按指定顺序、算术式摆积木、Agibot 数据集任务。每个任务展示:全局指令→当前观测→生成的子任务文字→预测的关键帧图像→执行动作。证明模型真的在'想一步画一步动一步',而不是黑盒出动作。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 5",
+      "page": 11,
+      "title": "RFG vs Naive 单步去噪(关键帧质量)",
+      "caption_original": "Predicted images using different denoising steps. The figure displays the generation results for the naive single-step denoise (Eq. 2) and RFG (Eq. 3) across varying denoising steps in real-world basic tasks and Robotwin randomized (unseen) scenarios. RFG demonstrates the capability to preserve backgrounds and achieve high-quality generation with very few steps.",
+      "what_it_shows": "RFG(N(v_t,I) 初始噪声)vs Naive(N(0,I) 纯噪声)在不同去噪步数下的关键帧生成质量。RFG 在 10 步就能生成高质量未来帧,Naive 几乎是噪声。证明把当前帧注入初始噪声让模型聚焦动态区域而非重建静态背景——这是 RFG 能把延迟压到 1.23s 还不掉点的原因。",
+      "image_path": "figures/p11.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 11,
+      "title": "真机 Basic Task 消融(预训练+RFG)",
+      "caption_original": "Ablation on Real-World Basic Tasks",
+      "what_it_shows": "真机 9 个 basic task 上的消融:BagelVLA(full) vs w/o pretrain vs RFG vs Naive。预训练在 pick&place OOD 和中等程任务(sweep rubbish/pour fries/stack cubes)上提升明显,说明语言规划+视觉动态预训练能迁移到 action。RFG 在多任务上优于 Naive。",
+      "image_path": "figures/p11.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 7",
+      "page": 22,
+      "title": "Attention Mask(三种 scheme 实现)",
+      "caption_original": "Attention Mask used for Different Conditioning Schemes. (a) Complete Denoise: Image prediction and action generation are performed separately... (b) Joint Denoise... (c) Single-Step Denoise: Action generation is conditioned directly on the context from the first denoising step of the image prediction.",
+      "what_it_shows": "Figure 3 的 attention mask 实现细节。展示如何用统一多任务 mask 在一条序列里同时算多个 FM loss,防止模态间信息泄漏,并处理训练/推理去噪步数不一致问题。是 Figure 3 的工程落地。",
+      "image_path": "figures/p22.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 8",
+      "page": 24,
+      "title": "Basic Task 真机演示",
+      "caption_original": "Demos videos of BagelVLA on Basic Tasks.",
+      "what_it_shows": "9 类 basic task 的真机执行视频帧(pick&place/water flower/stack cubes/put flowers in vase/stack bowls/pour fries/sweep rubbish/press button/drawer)。是 Table 2 真机结果的视觉佐证。",
+      "image_path": "figures/p24.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 9",
+      "page": 24,
+      "title": "Long-Horizon 真机演示",
+      "caption_original": "Demos videos of BagelVLA on Long-Horizon Planning Tasks.",
+      "what_it_shows": "两类长程任务的真机执行:Stack Cubes in Requested Order(按指定顺序叠积木,1-3 层)和 Calculate and Place Symbol Blocks(算术式摆积木,需 CoT 推理)。是 Table 3 长程结果的视觉佐证,展示模型在多阶段任务上的规划能力。",
+      "image_path": "figures/p24.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 10",
+      "page": 25,
+      "title": "更多交错规划可视化",
+      "caption_original": "Visualizations of interleaved planning results on diverse robotic tasks. Given a global instruction and the current observation...",
+      "what_it_shows": "Figure 4 的扩展版,更多任务的交错规划输出。每个都展示'指令→子任务文字→关键帧→动作'的完整链路。",
+      "image_path": "figures/p25.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 11",
+      "page": 26,
+      "title": "RFG vs Naive 补充对比",
+      "caption_original": "Predicted images using different denoising steps. The figure displays the generation results for the naive single-step denoise (Eq. 2) and RFG (Eq. 3)...",
+      "what_it_shows": "Figure 5 的补充,更多场景下 RFG vs Naive 的关键帧生成对比。进一步证明 RFG 在少步去噪下的优势。",
+      "image_path": "figures/p26.png",
+      "importance": "supportive"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "Interleaved Planning(文字→关键帧→动作显式因果链)",
+      "problem_it_solves": "长程任务的全局指令隐含多阶段,纯 VLA 黑盒映射无法显式分解,导致长程任务失败",
+      "how": "把 p(a_t, v_{t+k}, l_t | v_t, L) 因式分解成三步:p(l_t|v_t,L) · p(v_{t+k}|v_t,L,l_t) · p(a_t|v_t,L,l_t,v_{t+k})。理解专家自回归出子任务文字 l_t,生成专家 flow matching 出关键帧 v_{t+k},action 专家 flow matching 出动作 a_t。三步在一条序列里交错生成。",
+      "why_it_works": "每一步都有显式监督(CE/FM/FM),且后一步能 attend 前一步的隐状态。RoboTwin 上加文字规划从 54% 涨到 75%(+21%),长程任务上 BagelVLA 规划准确率近 90%。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Dual Flow Matching + Single-step Denoise",
+      "problem_it_solves": "把图像生成塞进 action 循环会带来 N1+N2 步去噪的 6 秒延迟,无法实时",
+      "how": "三种交互 scheme:Complete(先图像 N1 步再动作 N2 步,6.04s)、Joint(同步 N 步,2.90s)、Single-step(动作只看图像第 1 步 KV,1.23s)。训练时用统一多任务 attention mask 在一条序列里同时算两个 FM loss,且 action loss 用图像第 1 步的 noisy latent 作条件对齐推理。",
+      "why_it_works": "Single-step 不仅最快还最准(Calvin ABC-D 3.345 vs Complete 2.480)。原因是 Complete/Joint 在 OOD 测试(颜色变化)时,图像 FM 中间态会进入 OOD,污染 action;Single-step 只取第 1 步 KV,中间态不暴露给 action,鲁棒性更高。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Residual Flow Guidance(RFG)",
+      "problem_it_solves": "Single-step 用纯高斯噪声 N(0,I) 作关键帧初始,action 从纯噪声读条件信息弱,且关键帧生成需要很多步",
+      "how": "把初始噪声从 N(0,I) 换成 N(v_t, I)——以当前观测为均值的高斯。等于让 FM 学'相对当前帧的残差变化'而非'从零重建整帧'。action expert 仍只看第 1 步 KV,但第 1 步的输入已经是带当前帧先验的噪声。",
+      "why_it_works": "当前帧注入让模型聚焦动态区域(机器人手臂的运动)而非重建静态背景,所以 10 步就能生成高质量关键帧(Naive 需要更多步)。action 学习收敛更快,且推理延迟保持 1.23s 不变。Calvin ABC-D 从 Naive 3.345 提升到 RFG 3.600。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Mixture-of-Transformers 三专家 + Bagel 底座",
+      "problem_it_solves": "如何继承统一理解+生成模型的互联网级先验,同时加入 action 能力而不破坏原有能力",
+      "how": "用 Bagel(Qwen2.5-LLM-7B 基础的统一 MoT,7B active/14B total)初始化理解+生成专家,新增 2B action expert(同 Qwen2.5 架构但 MLP 缩到 1/5)。三专家经共享多头自注意力(MoT)耦合,各自保留独立 Transformer 模块。",
+      "why_it_works": "Bagel 底座带来强语言推理(能做算术摆积木的 CoT)和图像生成(关键帧预测)先验,这是 Cosmos Policy 纯视频模型给不了的。Action expert 用 2B 而非 7B,让它能 40Hz 高频跑并支持 KV-cache 异步执行。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Asynchronous Execution(异步执行提频)",
+      "problem_it_solves": "每 chunk 都要重算 Und/Gen expert 的 KV(含图像去噪),40Hz 仍不够快",
+      "how": "训练时随机用前一帧替换当前帧,让模型学会'在观测略滞后时也能出动作'。推理时 Und/Gen expert 的 KV 不每 chunk 更新,只更新本体感受输入给 action expert 出新 chunk。",
+      "why_it_works": "牺牲少量视觉新鲜度换频率,40Hz→72Hz。前提是交错规划里子任务和关键帧不会每个 chunk 都变,只在阶段切换时需要重新规划——这恰好是长程任务的结构。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "Calvin ABC-D mean completion length",
+      "value": "4.405",
+      "baseline_best": "VPP 4.329 / UP-VLA 4.078 / π0 3.648",
+      "setup": "1000 任务长度 5,D-split,mean completion length(越高越好)"
+    },
+    {
+      "metric": "RoboTwin Clean 50-task avg",
+      "value": "75.26%",
+      "baseline_best": "w/o-keyframe 56.72% / UP-VLA 52.92% / π0 46.42%",
+      "setup": "50 任务,unseen instructions"
+    },
+    {
+      "metric": "RoboTwin Randomized 50-task avg",
+      "value": "20.87%",
+      "baseline_best": "w/o-textual 19.20% / UP-VLA 15.16% / π0 16.34%",
+      "setup": "强 domain randomization,unseen instructions"
+    },
+    {
+      "metric": "真机 Basic Task 9 类 avg",
+      "value": "75.5%",
+      "baseline_best": "π0 65.0% / VPP 59.5%",
+      "setup": "Aloha-AgileX 双臂,每任务 20 次"
+    },
+    {
+      "metric": "真机 Stack Cubes(长程)Success avg",
+      "value": "73.3%",
+      "baseline_best": "w/o-keyframe 53.3% / π0 40.0% / VPP 25.0%",
+      "setup": "Easy/Middle/Hard 三档,按指定顺序叠积木"
+    },
+    {
+      "metric": "真机 Calculate Symbols(长程)Success avg",
+      "value": "63.3%",
+      "baseline_best": "w/o-keyframe 50.0% / π0 31.7% / VPP 23.3%",
+      "setup": "Easy/Middle/Hard,算术式摆积木(需 CoT)"
+    },
+    {
+      "metric": "推理延迟(单 chunk)",
+      "value": "1.23s(Single-step RFG)",
+      "baseline_best": "Complete 6.04s / Joint 2.90s",
+      "setup": "单 A800,Calvin single-view,20 次平均"
+    },
+    {
+      "metric": "真机 action 频率",
+      "value": "40Hz(同步)/ 72Hz(异步)",
+      "baseline_best": "—",
+      "setup": "单 RTX 5090,chunk=48"
+    }
+  ],
+  "insights": [
+    "Single-step denoise 不仅最快还最准——因为 Complete/Joint 在 OOD 测试时图像 FM 中间态会进入 OOD 污染 action,Single-step 只取第 1 步 KV 反而更鲁棒(p11 Table 4)。这是反直觉的:少去噪比多去噪好。",
+    "RFG 的本质是把'生成未来帧'变成'生成相对当前帧的残差',让模型聚焦动态区域而非重建静态背景。10 步就能出高质量关键帧(p11 Figure 5)。",
+    "长程任务上规划准确率(近 90%)远高于任务成功率(73.3%),说明模型'想对了'但'手没跟上'——action mapping 的精度是瓶颈,不是规划(p10)。",
+    "语言规划在 RoboTwin 上贡献 +21%(54%→75%),这是显式交错规划最强证据;视觉预测单独也有增益但小于语言规划(p12 4.3.4)。",
+    "预训练只训语言规划+视觉动态(不训 action),就能在 action finetune 后提升 OOD pick&place——说明通用多模态先验能跨模态迁移到控制(p12 4.3.3)。"
+  ],
+  "novelty_vs_peers": [
+    "vs Cosmos Policy:Cosmos 直接 fine-tune 大视频模型当 policy,缺专门 VLM backbone,指令跟随差;BagelVLA 用 Bagel 统一底座继承语言推理先验,能做算术式 CoT 任务,且用交错规划显式分解长程。",
+    "vs VPP:VPP 用视频预测做 policy 的辅助,但没显式语言规划;BagelVLA 把文字规划也塞进序列,长程任务收益更大(RoboTwin +21%)。",
+    "vs DreamZero:两者都涉及视频+动作,但 DreamZero 是 joint 端到端 AR DiT 共享 timestep 实时闭环(7Hz);BagelVLA 是 cascaded(文字→关键帧→动作显式三步)MoT,RFG 把视觉前瞻压到 1.23s 但仍比 DreamZero 慢。DreamZero 重实时,BagelVLA 重显式规划。",
+    "vs Motus:都用 MoT 三专家 + flow matching。但 Motus 用 UniDiffuser 调度切换五模式、用光流 latent action 预训练 action 专家;BagelVLA 用 interleaved planning 显式三步、用 RFG 解决视觉前瞻延迟。Motus 重统一性和跨本体数据,BagelVLA 重长程规划和推理延迟。",
+    "vs F1:F1 拼 VLA+IDM 但没做显式交错规划和视觉生成;BagelVLA 把语言规划+关键帧预测+动作生成三步全显式交错。"
+  ],
+  "limitations": [
+    "论文自承(Conclusion + 4.2.2):长程任务上规划准确率(近 90%)与任务成功率(63-73%)有 gap,说明 action mapping 精度是瓶颈,模型'想对了但手没跟上',受限于模型和数据集的精细控制能力(p10)。",
+    "论文自承:RoboTwin Randomized 场景绝对分仍低(20.87%),强 domain randomization 下所有方法都 struggle,BagelVLA 只是相对最好(p8 Table 1)。",
+    "我们读出:RFG 的 N(v_t, I) 假设'未来帧和当前帧结构相似',对快速运动或视角剧烈变化的任务可能不成立;论文未给 RFG 失效场景分析。",
+    "我们读出:异步执行(72Hz)靠训练时随机用前一帧替换当前帧,这隐含假设'子任务和关键帧不每 chunk 变'。对需要每 chunk 重新规划的高动态任务,异步会掉点,论文未量化异步的精度损失。",
+    "我们读出:Single-step 只取图像第 1 步 KV 作条件,等于放弃了完整关键帧的信息——如果任务强依赖精确未来视觉目标(如精细对位),Single-step 可能不够,论文未对比 Single-step 与 Complete 在精细任务上的差异,只在 Calvin(简单任务)上比较。",
+    "我们读出:真机只比 π0 和 VPP,没和 DreamZero/Motus/X-VLA 真机直接对照;长程任务的优势部分来自 baseline(VPP/π0)本身没显式规划,比较不够公平。",
+    "我们读出:三专家总 16B,单 RTX 5090 跑 1.23s/chunk 依赖异步和 KV-cache,部署门槛仍高于纯 VLA;Action expert 2B 的容量是否够复杂任务未讨论。"
+  ],
+  "reproducibility": {
+    "code": "https://cladernyjorn.github.io/BagelVLA.github.io(项目页)",
+    "weights": "Bagel-7B-MoT 公开底座;BagelVLA 自身权重开源情况未明确",
+    "sim_benchmark": "Calvin ABC-D、RoboTwin 2.0(50 任务 Clean+Randomized)",
+    "real_eval": "Aloha-AgileX 14-DOF 双臂,9 类 basic + 2 类 long-horizon,每任务 20 次"
+  },
+  "tags": [
+    "interleaved planning",
+    "Mixture-of-Transformers",
+    "dual flow matching",
+    "Residual Flow Guidance",
+    "long-horizon manipulation",
+    "Bagel",
+    "keyframe prediction",
+    "Tsinghua",
+    "ByteDance"
+  ]
+}

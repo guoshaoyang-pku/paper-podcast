@@ -1,0 +1,401 @@
+{
+  "slug": "fast",
+  "title": "FAST: Efficient Action Tokenization for Vision-Language-Action Models",
+  "authors": [
+    "Karl Pertsch",
+    "Kyle Stachowicz",
+    "Brian Ichter",
+    "Danny Driess",
+    "Suraj Nair",
+    "Quan Vuong",
+    "Oier Mees",
+    "Chelsea Finn",
+    "Sergey Levine"
+  ],
+  "affiliation": "Physical Intelligence · UC Berkeley · Stanford",
+  "arxiv": "2501.09747",
+  "date": "2025-01-16",
+  "venue": "arXiv preprint (Physical Intelligence)",
+  "category": "VLA",
+  "one_liner": "用离散余弦变换(DCT)+BPE 把高频机器人动作序列压缩成短 token,让自回归 VLA 第一次能在灵巧高频任务上训起来,并且比 diffusion VLA 训练快 5 倍。",
+  "problem": {
+    "what_they_address": "自回归 VLA(把动作离散成 token、走 next-token prediction 的那一类)在低频任务(BridgeV2/RT-1)上工作,但一上高频灵巧任务(T恤折叠 50Hz、收桌 20Hz、DROID 15Hz)就完全训不动。作者要找到根因并给出一个能用、能 scale、还省训练算力的动作 tokenization 方案。",
+    "why_prior_work_falls_short": "之前所有自回归 VLA(RT-2、OpenVLA)都用 per-dimension、per-timestep binning:每维每步独立分到 256 个 bin,导致一个 1 秒 action chunk 在 50Hz 双臂 14 维上要产生 700 个 token。问题是高频信号相邻 token 高度相关——'复制上一个动作'就能拿到极低的 next-token loss,模型陷入 trivial local optimum,真正该学的细微变化学不到。根因在 tokenization 让学习信号接近零,与模型容量无关。diffusion VLA(π0)绕开了 tokenization,但要训一个 300M 的 action expert + flow matching,训练算力贵;且作者发现它在 DROID 上会忽略语言指令。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "images",
+        "type": "image",
+        "detail": "2~3 张 224×224:1 张第三视角 + 每臂 1 张腕部相机;各自过视觉编码器后 token 拼接"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "自然语言任务指令,用 LLM 自带的文本 tokenizer 编码"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "本体感受状态,用 256-bin 离散化成整数,当作文本 token 拼进输入(输入端用 binning 没问题,因为不参与 next-token 学习目标)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "action token sequence",
+        "type": "discrete tokens",
+        "detail": "FAST 压缩后的动作 token 序列(~30 tokens/秒/臂),覆盖 1 秒 action chunk"
+      },
+      {
+        "name": "action chunk",
+        "type": "continuous",
+        "detail": "detokenize 后的 1 秒连续动作 chunk(维度=|A|,步数=控制频率)"
+      }
+    ],
+    "control_frequency": "测试覆盖 5/15/20/50 Hz;chunk 固定 1 秒;推理 π0-FAST 单 chunk ~750ms(diffusion π0 ~100ms)",
+    "concat_protocol": "FAST 是一个 action 编解码器,而非序列拼接方案。它的'protocol'是 token 在主干里的进出流程:\n<bos_vision>[VisEnc(img_3rd) ⊕ VisEnc(img_wrist1) (⊕ VisEnc(img_wrist2))]<eos_vision><bos_text>TokLLM(instruction) ⊕ TokLLM(proprio_binned)<eos_text><bos_action>[FAST(action_chunk_1s) = T_1, ..., T_n]<eos_action>\n\n逐段解释:\n- <bos_vision>...<eos_vision>:多张图各自过预训练视觉编码器,把得到的 token 在序列维拼接(不是通道维)。DROID 设置:1 张第三视角 + 1 张腕部相机;训练时第三视角从 DROID 提供的两个外视角里随机选一个,所以推理能换视角、不需要相机标定。\n- <bos_text>...<eos_text>:语言指令 + proprio 都走 LLM 自己的文本 tokenizer。proprio 被预先 256-bin 离散化成整数串,再当文本 token 编码。作者强调:proprio 是输入,不参与 next-token loss,所以用 binning 完全没问题——问题只在'要预测的动作输出'。\n- <bos_action>...<eos_action>:这是 FAST 真正改造的地方。原始 1 秒 action chunk(维度 |A|、步数=控制频率)经过 [量化归一化 → DCT → scale-and-round → 按低频优先 flatten → BPE] 压成 n 个动作 token,直接覆盖 LLM 词表里最少用的 n 个 token(RT-2/OpenVLA 的标准做法)。推理时模型自回归吐出这串 token,再 detokenize 回连续动作。\n\n训练 vs 推理差异:训练时 action chunk 是教师强制的 ground truth,FAST 编码一次性给出整串 target token;推理时模型从 <bos_action> 起逐 token 贪心解码(双臂任务加温度 β=0.7 帮助跳出 home position),detokenize 后开环执行整段 1 秒 chunk。chunk 内是开环、不接新观测——这是和 DreamZero 闭环完全不同的控制范式。"
+  },
+  "datasets": [
+    {
+      "name": "Libero(sim)",
+      "size": "270k samples",
+      "note": "Libero-Spatial/Object/Goal/Long 合并训练,40k iter/40 epoch"
+    },
+    {
+      "name": "Table Bussing",
+      "size": "1 dataset",
+      "note": "UR5 单臂 20Hz,~70 物体收桌;评估 12 物体未见配置"
+    },
+    {
+      "name": "T-Shirt Folding",
+      "size": "~150 shirts",
+      "note": "ARX 双臂 50Hz 折 T 恤;最难高频灵巧任务"
+    },
+    {
+      "name": "Grocery Bagging",
+      "size": "—",
+      "note": "UR5 单臂 20Hz,7 物品装袋"
+    },
+    {
+      "name": "Toast out of Toaster",
+      "size": "—",
+      "note": "Trossen ViperX 双臂 50Hz,从烤面包机取吐司放盘"
+    },
+    {
+      "name": "Laundry Folding",
+      "size": "—",
+      "note": "ARX 双臂 50Hz,从篮取衣→摊平→折→叠放;最难的 long-horizon 任务"
+    },
+    {
+      "name": "DROID",
+      "size": "75k episodes / 21M samples",
+      "note": "Franka 单臂 15Hz,首次 zero-shot 部署 DROID policy 到完全未见环境"
+    },
+    {
+      "name": "FAST+ universal tokenizer 训练集",
+      "size": "1M 1-秒 action chunks",
+      "note": "跨本体:单臂/双臂/移动/dex 手/humanoid/nav;joint/EEF/cam-frame 动作空间;5~60Hz;详 Table III"
+    }
+  ],
+  "architecture": {
+    "backbone": "π0 (PaliGemma-3B VLM) 主干 + OpenVLA (Prismatic-7B) 消融",
+    "params": "π0 主干 3B;diffusion π0 的 action expert 300M;FAST 本身参数量≈0(只学一个 BPE 词表)",
+    "type": "autoregressive next-token VLA + 外挂 DCT-BPE 动作编解码器",
+    "key_components": [
+      "VLM 主干(PaliGemma-3B / Prismatic-7B):处理图像+语言+proprio,输出动作 token",
+      "视觉编码器:每张 224×224 图独立编码后 token 拼接",
+      "proprio 处理:256-bin 离散化成整数→当文本 token(输入侧,不进 loss)",
+      "FAST encoder:量化归一化 → DCT → scale-and-round → 低频优先 flatten → BPE → 动作 token",
+      "FAST decoder:encoder 的精确逆过程(BPE→unflatten→inverse DCT→denormalize)",
+      "FAST+ universal tokenizer:在 1M 跨本体 chunks 上预训练的 BPE 词表,可黑盒用于新机器人"
+    ],
+    "why_this_design": "根因诊断:next-token 的学习信号正比于 T_i 给定 T_{1:i-1} 的边际信息量;高频信号相邻 token 高度相关,边际信息趋零,模型学到'复制上一步'就够低 loss。解法是先把动作压成低相关的短 token 序列,而非堆模型容量。DCT 是分析式、确定、几乎免训练的连续信号压缩(JPEG 同款),BPE 再把稀疏 DCT 系数无损压成定长词表——整个 tokenizer 只有两个超参(rounding scale γ、BPE 词表大小),远比 VQ-VAE/FSQ 这类学习式压缩简单可控。低频优先 flatten 让模型先预测决定整体形状的低频系数,autoregressive rollout 更稳。",
+    "numerical_sense": {
+      "vocab_size": "BPE 词表 1024(单数据集);FAST+ 也是 1024;动作 token 直接覆盖 LLM 词表里最少用的那些槽位",
+      "codebook_dim": "N/A(用 DCT 系数空间,非 VQ);动作 token 本身是 LLM 词表里的整数 ID",
+      "compression_ratio": "vs naive binning:BridgeV2 35→20 (1.75×)、DROID 105→29 (3.6×)、Bussing 140→28 (5.0×)、Shirt Fold 700→53 (13.2×);高频任务压缩比越大",
+      "tokens_per_chunk": "FAST 稳定在 ~30 tokens/秒/臂(双臂 ~60),几乎与频率无关——意味着它逼近了信号的内在复杂度",
+      "backbone": "π0 = PaliGemma-3B;OpenVLA = Prismatic-7B;图像 224×224;vision encoder 独立编码后 token 拼接",
+      "action_chunk": "固定 1 秒;步数=控制频率(Bridge 5 步、DROID 15 步、Bussing 20 步、Shirt Fold 50 步);维度 |A| 从 7(单臂)到 40(humanoid H1)",
+      "rounding_scale": "γ=10(DCT 系数乘 10 后四舍五入);单一超参控制 压缩↔重建 权衡",
+      "training": "π0-FAST 在 10k 小时跨本体数据(903M timesteps + 9.1% Bridge/DROID/OXE)训练,5× fewer GPU hours 比 diffusion π0;DROID:240k iter × batch 256,3 epoch,8×H100 约 4 天;学习率 5e-5,EMA 0.999,AdamW",
+      "inference_latency": "π0-FAST ~750ms/chunk(需自回归解码 30~60 token,且用全 2B backbone);diffusion π0 ~100ms/chunk(10 步去噪 + 300M action expert)——这是 FAST 的主要短板"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 1,
+      "title": "门面图:FAST 让 π0-FAST 训得快又好",
+      "caption_original": "We propose FAST, a simple yet effective approach for tokenization of robot action trajectories via time-series compression. FAST enables training of autoregressive VLAs that solve complex dexterous manipulation tasks. We use it to train π0-FAST, a generalist robot policy that matches the performance of the state-of-the-art π0 diffusion VLA while training 5x faster.",
+      "what_it_shows": "上方的训练曲线对比:π0-FAST(蓝)在 table bussing + T-shirt folding 平均分上比 diffusion π0 早很多达到同等水平,5× 训练加速。下方的灵巧任务可视化(折衣/收桌)说明 FAST 真让自回归 VLA 能做高频灵巧操作(作用远超'只压 token')。核心信息:一个看似工程的小改(tokenizer),把自回归 VLA 从'低频专属'推进到'匹敌 diffusion VLA 且更省算力'。",
+      "image_path": "figures/p01.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 2,
+      "title": "为什么需要 FAST",
+      "caption_original": "Left: FAST tokenization enables training of autoregressive Transformers for dexterous robot control via simple next token prediction. Right: FAST outperforms popular binning tokenization schemes, e.g., used in OpenVLA, particularly for high-frequency robot data.",
+      "what_it_shows": "右图是核心诊断:横轴控制频率(2/5/10/20Hz),纵轴策略分数。OpenVLA 风格 binning 在 2Hz 还行,频率一高分数崩到接近 0;FAST 全频段都稳。左图示意 FAST 让自回归 VLA 用 next-token 就能学灵巧任务。这张图直接对应论文的根因论断:binning 在高频失败源于 tokenization 让学习信号消失,与模型无关。",
+      "image_path": "figures/p02.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 3,
+      "title": "toy 实验:采样率 vs 预测误差",
+      "caption_original": "Effect of sampling rate on prediction performance. Models trained with binning produce increasingly poor predictions as we increase sampling frequency, due to strong correlation between consecutive tokens. Our FAST tokenization addresses the problem.",
+      "what_it_shows": "一个受控 toy 任务:预测过 4 个点的三次样条。横轴采样率(25→800 步)。上:MSE 曲线,binning(蓝)随采样率升高误差陡升,最后模型直接抄第一个动作(右下可视化);FAST 全程低误差。这是论文最干净的因果论证:数据分布不变、模型容量不变,只换 tokenization,结论完全不同。说明根因是 tokenization 而非数据或模型。",
+      "image_path": "figures/p03.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 4",
+      "page": 4,
+      "title": "FAST tokenizer 流程(最重要)",
+      "caption_original": "Overview of the FAST action tokenization pipeline. Given a normalized chunk of actions, we apply DCT to convert the signal to the frequency domain. We then quantize the DCT coefficients and use BPE to compress the flattened sequence into the final action token sequence.",
+      "what_it_shows": "全文最该看的图。5 步流水线:①归一化 action chunk(1st/99th 分位映射到 [-1,1]);②对每维单独做 DCT,转到频域;③scale-and-round 量化(γ=10),得到稀疏系数矩阵(大量 0);④按低频优先 flatten(所有维的最低频系数先排,再次低频...),让 autoregressive 先预测整体形状;⑤BPE 无损压缩成定长词表的 token。这张图同时回答'怎么编码、为什么可逆、超参在哪'。对应 Algorithm 1。",
+      "image_path": "figures/p04.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 5",
+      "page": 6,
+      "title": "7 个评测环境",
+      "caption_original": "We test FAST across 7 evaluation environments: 6 real-robot tasks and 1 simulation environment. Tasks test VLA performance on highly dexterous tasks (Laundry Folding) and generalization (zero-shot DROID).",
+      "what_it_shows": "评测套件总览:Libero(sim)、Table Bussing(20Hz UR5)、T-Shirt Folding(50Hz ARX 双臂)、Grocery Bagging(20Hz UR5)、Toast(50Hz Trossen 双臂)、Laundry Folding(50Hz ARX 双臂,最难 long-horizon)、Zero-shot DROID(15Hz Franka,首次完全未见环境评测)。覆盖频率 5~50Hz、单臂/双臂、sim/real,说明结论不是单一 setup 的偶然。",
+      "image_path": "figures/p06.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 6",
+      "page": 8,
+      "title": "四种 tokenizer 主结果",
+      "caption_original": "Comparison of policy performance using different tokenization approaches. Compression-based tokenizers (FAST, FSQ) lead to substantially more efficient training than naïve binning. FAST leads to more effective training than FSQ, particularly on dexterous real-robot tasks. FAST+ matches dataset-specific tokenizers.",
+      "what_it_shows": "4 任务 × 4 tokenizer(Naive/FSQ/FAST/FAST+)主结果柱状图。Naive 在 50Hz Shirt Fold 和 20Hz Bussing 上完全打不出分;FSQ 比 Naive 好但仍输 FAST;FAST 在所有任务最强或并列;FAST+ universal tokenizer 几乎追平数据集专属 FAST。两个关键结论:①压缩是关键(不止 FAST 特殊);②FAST 比 FSQ 这种学习式压缩更稳更简单。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 7",
+      "page": 8,
+      "title": "DROID zero-shot 三校园",
+      "caption_original": "Evaluation environments of FAST policy trained on DROID. The same policy checkpoint generalizes robustly, performs simple table-top tasks zero-shot across three university campuses.",
+      "what_it_shows": "Berkeley/Stanford/U.Washington 三地部署同一 DROID policy 的照片。关键定性结论:这是 DROID 数据集第一次被训出'完全未见环境零样本'policy(原 DROID paper 和 OpenVLA 都只做 co-training/fine-tuning 评测)。policy 能做 pick-and-place、开关抽屉、开水龙头;失败 trial 也表现合理(如接近微波炉门把手)。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 8",
+      "page": 8,
+      "title": "FAST+ 跨本体压缩比",
+      "caption_original": "Universal tokenizer. We test the compression rate achieved by FAST+ vs naïve tokenization across diverse robot datasets, unseen during tokenizer training. FAST is effective across a wide range of robot morphologies, action spaces and control frequencies.",
+      "what_it_shows": "横轴数据集(单臂/dex/humanoid/nav 共 ~15 个,均未参与 FAST+ 训练),纵轴 naive/FAST 压缩比(对数)。FAST+ 在所有形态上都至少 2× 压缩,部分到 10×。证明 FAST+ 不是只在训练分布内有效,可作为通用黑盒 tokenizer。对应 Table III 的完整数据集列表。",
+      "image_path": "figures/p08.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 9",
+      "page": 9,
+      "title": "FAST vs diffusion π0(单任务)",
+      "caption_original": "Comparison of diffusion π0 to our π0 model with FAST decoding on single-task training. On small datasets both perform comparably. On large datasets (Table Bussing), FAST converges faster. In DROID, FAST follows language instructions better.",
+      "what_it_shows": "4 任务柱状图。小数据集(Libero/T-Shirt)<50h 两者持平;大数据集(Table Bussing)FAST 用 3× 更少步数达同等水平;DROID 上 FAST 分数更高——作者归因 diffusion π0 经常忽略语言指令(会直接抓物体),FAST 自回归 VLA 更听语言。这是 FAST 主卖点之一:不仅快,还在某些维度更好。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 10",
+      "page": 10,
+      "title": "Laundry Folding rollout",
+      "caption_original": "Rollout of π0-FAST on the laundry folding task. FAST tokenization enables autoregressive VLAs to perform complex, long-horizon, dexterous tasks that were impossible with previous tokenization schemes.",
+      "what_it_shows": "π0-FAST 在 laundry folding(从篮取衣→摊平→折→叠放)的 10 步 rollout。这是论文最难任务,以前 binning tokenizer 完全训不出。FAST 让纯自回归 VLA(无 diffusion)也能做多阶段灵巧操作。是'FAST 解锁新能力'的视觉证据。",
+      "image_path": "figures/p10.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 11",
+      "page": 10,
+      "title": "通用 VLA:π0-FAST vs diffusion π0",
+      "caption_original": "Comparison of π0-FAST and diffusion π0 generalist policies. π0-FAST matches the performance of diffusion π0 while requiring significantly less compute for training.",
+      "what_it_shows": "5 个 generalist 任务平均柱状图。π0-FAST(自回归+FAST)在 T-Shirt/Bussing/Grocery/Toast/Laundry 平均上匹敌 diffusion π0,但训练用 5× 更少 GPU 小时。这是论文最终论点:FAST 让自回归 VLA 在'性能'和'算力效率'两个维度同时追平甚至超过 diffusion VLA。",
+      "image_path": "figures/p10.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 12",
+      "page": 16,
+      "title": "压缩↔重建权衡曲线",
+      "caption_original": "Comparison of compression-reconstruction tradeoff on six training datasets. FAST performs well across a wide range of scales. Although less efficient than VQ-based tokenizers at low fidelities, it exhibits much better scaling to higher reconstruction fidelity, making FAST much more applicable to fine-grained control.",
+      "what_it_shows": "6 数据集上横轴 token 数、纵轴重建误差的权衡曲线。FAST 在低 fidelity 区不如 FSQ 极致压缩,但向高 fidelity 区 scaling 好得多——这对精细控制(高频灵巧任务)是决定性的。说明 FAST 的优势不在'压得最狠',而在'高保真下仍能压'。",
+      "image_path": "figures/p16.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 13",
+      "page": 17,
+      "title": "5 个评测任务的初始配置",
+      "caption_original": "Sampled initial configurations of evaluation tasks: Table Bussing / T-Shirt Folding / Grocery Bagging / Toast out of Toaster / Laundry Folding.",
+      "what_it_shows": "5 个真实评测任务的初始场景照片。给读者一个'评测难度'的直观感受:Bussing 12 物体混 trash/plates、T-Shirt 5 件不同色码、Grocery 7 物品入袋、Toast 双臂取吐司、Laundry 从篮取衣折放。是结果可信度的环境证据。",
+      "image_path": "figures/p17.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 14",
+      "page": 18,
+      "title": "DROID 定量评测场景",
+      "caption_original": "Setups used for quantitative DROID evaluation. 16 tasks, 44 trials total per policy.",
+      "what_it_shows": "DROID 定量评测的 16 个任务/44 trial 的初始场景照片。配合 Table II 的任务清单(放勺入碗、关抽屉、擦白板等)。定义了 DROID zero-shot 评测的口径——完全未见环境、视角、物体,只靠自然语言 prompt。",
+      "image_path": "figures/p18.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 15",
+      "page": 18,
+      "title": "compute-matched 对比",
+      "caption_original": "Comparison of π0-FAST and compute-matched diffusion π0 generalist policies. π0-FAST clearly outperforms the diffusion VLA when trained with the same amount of training compute, due to its faster convergence.",
+      "what_it_shows": "5 任务 compute-matched 柱状图(两边用同样 GPU 小时)。π0-FAST 在 T-Shirt/Bussing/Grocery/Toast 平均上明显超过 compute-matched diffusion π0。这是 Figure 11 的补充论证:其含义是'同算力下 FAST 更强'(而非'FAST 用更少算力达到同等')——根因是收敛更快。",
+      "image_path": "figures/p18.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "DCT 频域压缩做 action tokenization",
+      "problem_it_solves": "高频动作 chunk 相邻 token 高度相关,binning 让 next-token loss 被'复制上一步'主导,学习信号趋零",
+      "how": "对每维动作独立做离散余弦变换(DCT,与 JPEG 同款),把信号转到频域;低频系数承载整体形状,高频系数承载细节;绝大多数高频系数权重极小,经 scale(γ=10)-and-round 后变 0,得到稀疏系数矩阵。",
+      "why_it_works": "DCT 是分析式、确定、近零训练成本的连续信号压缩;它把'高频冗余'从时域搬到频域的'少数低频系数',从根上恢复 next-token 的边际信息量。toy 实验(Figure 3)证明:同数据同模型,只换 DCT 压缩,高频误差从陡升变平。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "BPE 无损压缩稀疏 DCT 系数",
+      "problem_it_solves": "DCT 量化后矩阵稀疏但仍是整数序列,直接喂模型会预测大量 0-token,稀释信号且推理慢",
+      "how": "把 |A|×H 的 DCT 系数矩阵按低频优先 flatten(所有维最低频先排,再次低频...),再用 byte-pair encoding 把频繁出现的系数组合 merge 成定长词表(1024)的 token。BPE 是 lossless,可逆;词表小且能直接并入 LLM 既有词表(覆盖最少用的 token 槽位)。",
+      "why_it_works": "BPE 把稀疏 0 全压掉,把高频共现的系数模式(如某维低频系数常组合)压成单 token。消融(Figure 右侧)显示去 BPE 后策略仍优于 binning 但明显差于带 BPE——DCT 已恢复信号,BPE 再把效率拉满。低频优先 flatten 让模型先预测整体形状,autoregressive rollout 更稳。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "FAST+ 通用预训练 tokenizer",
+      "problem_it_solves": "每个新数据集都要重训 BPE 词表(虽快但增加使用摩擦),无法 black-box 用于新机器人",
+      "how": "在 1M 条 1-秒跨本体 action chunks(单臂/双臂/移动/dex/humanoid/nav,joint/EEF/cam-frame,5~60Hz)上预训练一个 BPE 词表,发布成 HuggingFace AutoProcessor。新机器人只需 quantile 归一化到 [-1,1] 后直接 tokenize。",
+      "why_it_works": "FAST 压缩比与频率无关、稳定 ~30 tokens/秒/臂,说明它逼近了动作信号的内在复杂度,不依赖具体本体。实测 FAST+ 在所有未参与训练的数据集上都 ≥2× 压缩,policy 训练性能追平数据集专属 FAST。这让 FAST 从'每数据集一训'变成'即插即用'。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "用 token 覆盖策略复用 LLM 词表",
+      "problem_it_solves": "动作 token 要进 LLM 词表但不能破坏既有语言/视觉 token",
+      "how": "遵循 RT-2/OpenVLA 做法:把 FAST 输出的 token 直接覆盖 LLM 词表里使用频率最低的那些槽位。训练时不冻结主干权重(全参数 fine-tune),让模型学会'看到图像+语言+proprio,吐出动作 token'。",
+      "why_it_works": "复用 LLM 词表意味着不需要改 backbone 结构、不需要新 head,任何预训练 autoregressive transformer 都能直接接 FAST。OpenVLA 消融证明 FAST 与 backbone 解耦:把 OpenVLA 原生 binning 换成 FAST,T-shirt folding 从训不动变成能训。这是 FAST 'portability' 的证据。",
+      "detail_level": "mid"
+    },
+    {
+      "name": "π0-FAST:自回归 VLA 第一次匹敌 diffusion VLA",
+      "problem_it_solves": "diffusion VLA(π0)一直被认为比自回归 VLA 强,自回归路线是否还有竞争力存疑",
+      "how": "π0-FAST = π0 主干(PaliGemma-3B)+ FAST 动作解码。在 10k 小时跨本体混合数据(903M timesteps + 9.1% Bridge/DROID/OXE)上训练,与 Black et al. 的 diffusion π0 同任务对比。",
+      "why_it_works": "收敛快 5×,最终性能匹敌甚至超过 diffusion π0;在 DROID 上语言跟随更好(diffusion π0 倾向忽略指令直接抓物体)。compute-matched 对比下 π0-FAST 也明显胜出——根因是 FAST 把动作学习信号密度拉高,梯度更有效。代价是推理慢(750ms vs 100ms),但静态任务可接受。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "token 压缩比 (Shirt Fold 50Hz 双臂)",
+      "value": "13.2× (700→53 tokens)",
+      "baseline_best": "naive binning 700 tokens",
+      "setup": "1-秒 chunk,14 维 @50Hz"
+    },
+    {
+      "metric": "token 压缩比 (Bussing 20Hz 单臂)",
+      "value": "5.0× (140→28 tokens)",
+      "baseline_best": "naive 140 tokens",
+      "setup": "1-秒 chunk,7 维 @20Hz"
+    },
+    {
+      "metric": "T-Shirt Folding 成功率 (50Hz 灵巧)",
+      "value": "FAST 可训出有效策略",
+      "baseline_best": "naive binning 0% (无法训)",
+      "setup": "ARX 双臂,π0 backbone"
+    },
+    {
+      "metric": "Table Bussing 收敛速度",
+      "value": "FAST 3× fewer steps 达同等分",
+      "baseline_best": "diffusion π0",
+      "setup": "UR5 20Hz,大数据集"
+    },
+    {
+      "metric": "π0-FAST vs diffusion π0 generalist 平均",
+      "value": "匹敌 (5 任务平均持平或略胜)",
+      "baseline_best": "diffusion π0",
+      "setup": "10k 小时跨本体数据,5 任务"
+    },
+    {
+      "metric": "训练算力",
+      "value": "5× fewer GPU hours",
+      "baseline_best": "diffusion π0",
+      "setup": "π0-FAST vs π0 同性能点"
+    },
+    {
+      "metric": "compute-matched generalist 平均",
+      "value": "π0-FAST 明显胜出",
+      "baseline_best": "compute-matched diffusion π0",
+      "setup": "同 GPU 小时,5 任务"
+    },
+    {
+      "metric": "OpenVLA + FAST (T-Shirt Fold)",
+      "value": "显著提升,可训",
+      "baseline_best": "OpenVLA 原生 binning (训不动)",
+      "setup": "证明 FAST 与 backbone 解耦"
+    },
+    {
+      "metric": "推理延迟",
+      "value": "π0-FAST ~750ms/chunk",
+      "baseline_best": "diffusion π0 ~100ms/chunk",
+      "setup": "NVIDIA 4090;FAST 主要短板"
+    },
+    {
+      "metric": "DROID zero-shot 跨校园",
+      "value": "首次完全未见环境零样本",
+      "baseline_best": "原 DROID paper / OpenVLA 均只做 co-training/fine-tune",
+      "setup": "Berkeley/Stanford/U.Washington 三地"
+    }
+  ],
+  "insights": [
+    "根因不在模型容量,在 tokenization:next-token 学习信号正比于 T_i|T_{1:i-1} 的边际信息量;高频 binning 让相邻 token 高度相关,边际信息趋零,模型学到'复制上一步'就够低 loss,真正的细微变化学不到(p3, Figure 3 toy 实验)。",
+    "压缩比与频率无关是关键信号:FAST 在所有数据集上稳定 ~30 tokens/秒/臂,说明它逼近了动作信号的内在复杂度,而 binning 的 token 数随频率线性涨——binning 是在编码冗余,FAST 是在编码信息(p7 Table I)。",
+    "FAST 不是'压得最狠'的,是'高保真下仍能压'的:在低 fidelity 区 FSQ 等 VQ 方法压得更狠,但向高 fidelity scaling 时 FAST 远胜——这决定了 FAST 适合精细控制,VQ 适合粗略重建(p16 Figure 12)。",
+    "自回归 VLA 的语言跟随比 diffusion VLA 更好:DROID 评测中 diffusion π0 经常忽略语言直接抓物体,π0-FAST 听语言。作者未深究但留作 future work(p9)。",
+    "FAST 把'换 tokenizer'从工程杂活变成了 VLA 架构选择的关键杠杆:一个几乎零参数的 DCT-BPE 编码器,让自回归 VLA 在性能和算力上同时追平 diffusion VLA——这是对'VLA 架构之争仍未定'的最有力注脚(p10-11)。",
+    "FAST+ universal tokenizer 的存在意义:它把'每数据集重训 BPE'变成'即插即用',降低了自回归 VLA 的使用门槛,可能比单个性能数字更有长期影响(p6)。"
+  ],
+  "novelty_vs_peers": [
+    "vs naive binning (RT-2/OpenVLA):binning 是 per-dim per-step 独立分 bin,不利用时间相关性,高频下 token 数线性涨、学习信号趋零;FAST 用 DCT 把时间冗余搬到频域稀疏系数,再 BPE 压成定长短序列,token 数与频率解耦。",
+    "vs FSQ/VQ-VAE 这类学习式压缩:VQ 要训一个 encoder-decoder 网络,超参敏感、重建质量不稳定,低 fidelity 区压得狠但高 fidelity scaling 差;FAST 是分析式(DCT)+ lossless(BPE),几乎免训练,高保真下优势明显(p16 Figure 12)。",
+    "vs diffusion VLA (π0):diffusion π0 用 300M action expert + flow matching 绕开 tokenization,推理快(100ms)但训练算力贵、DROID 上忽略语言;π0-FAST 用 FAST 让自回归路线训练快 5×、compute-matched 下更强、语言跟随更好,代价是推理慢(750ms)。两条路线的 trade-off 被清晰量化。",
+    "vs semantic action reps (keypoints/language sub-tasks):那些方法样本高效但需要 hand-designed 低层控制器,泛化受限;FAST 直接输出低层控制命令,不依赖任务特定设计,是更通用的 low-level tokenization。"
+  ],
+  "limitations": [
+    "论文自承:推理慢。π0-FAST ~750ms/chunk(diffusion π0 ~100ms),因为要自回归解码 30~60 个 token 且用全 2B backbone,而 diffusion 只需 10 步 + 300M expert。静态任务可接受,动态任务会是问题(p9, Discussion)。",
+    "论文自承:只在静态操作器上做了真实 policy 评测;FAST+ 在 mobile/dex/humanoid 上只做了离线压缩测试,真实 policy 性能未验证(p11 future work)。",
+    "论文自承:autoregressive vs diffusion 哪个 VLA 架构更优仍未定,需要更系统对比训练速度/语言 grounding/表达力(p11)。",
+    "我们读出:chunk 内是开环执行 1 秒动作,不接新观测——这和 DreamZero 的闭环 KV-cache 替换是完全不同的控制范式,在需要中途纠错的动态任务上可能受限(论文未测高频动态任务如接球)。",
+    "我们读出:γ=10 rounding scale 是个手调超参,论文说'不敏感'但只给了一组数据集上的扫描图(Figure 12),跨本体/跨任务的最优 γ 是否一致未充分论证。",
+    "我们读出:compression 是 lossy 的(量化丢高频),论文报告的压缩比是'comparable reconstruction accuracy'下的,但 reconstruction error 到 policy 性能的映射没给——高保真 ≠ 高 policy 性能,这条链路论文留白。"
+  ],
+  "reproducibility": {
+    "code": "https://pi.website/research/fast (HuggingFace AutoProcessor: physical-intelligence/fast)",
+    "weights": "FAST+ universal tokenizer 开源;π0-FAST policy 检查点随 π0 release",
+    "sim_benchmark": "Libero (Spatial/Object/Goal/Long)",
+    "real_eval": "UR5 单臂 / ARX 双臂 / Trossen 双臂 / Franka(DROID) + 三校园 zero-shot 部署"
+  },
+  "tags": [
+    "VLA",
+    "action tokenization",
+    "DCT",
+    "BPE",
+    "autoregressive",
+    "high-frequency control",
+    "π0",
+    "Physical Intelligence",
+    "compression"
+  ]
+}

@@ -1,0 +1,334 @@
+{
+  "slug": "rl-token-vla",
+  "title": "RL Token: Bootstrapping Online RL with Vision-Language-Action Models",
+  "authors": [
+    "Charles Xu",
+    "Jost Tobias Springenberg",
+    "Michael Equi",
+    "Ali Amin",
+    "Adnan Esmail",
+    "Sergey Levine",
+    "Liyiming Ke"
+  ],
+  "affiliation": "Physical Intelligence",
+  "arxiv": "2604.23073",
+  "date": "2026-04-30",
+  "venue": "arXiv preprint (Physical Intelligence)",
+  "category": "VLA",
+  "one_liner": "给冻结的 π0.6 VLA 训一个'RL token'瓶颈表示,在它上面挂一个几层 MLP 的 actor-critic 做 online RL 微调,几小时甚至几分钟真实机器人数据就能把毫米级精密任务的 critical phase 提速 3× 并显著提升成功率。",
+  "problem": {
+    "what_they_address": "VLA(π0.6)开箱能做很多操作,但在'最后一毫米'上失败——动作慢、要重试、critical phase 小误差累积成失败。要靠 RL 精修。但全量 RL 微调一个 billion 参数 VLA 既算力贵又样本低效,真实机器人几小时预算内做不完;而 SERL/RL100 这类小模型 online RL 虽然几小时能学,但放弃了 VLA 的泛化先验。作者要在两者之间架桥:既保 VLA 的感知+行为先验,又拿到小 actor-critic 的样本效率。",
+    "why_prior_work_falls_short": "现有 VLA-RL 路线分两极端。一端 RECAP/PPO 直接更新整个 VLA(如 π*0.6),需要大规模数据、算力贵、不适合几小时 real-world adaptation。另一端是轻量辅助模块:ConRFT 冻结 VLA encoder 训单步 action head(无 chunking,credit assignment 长horizon 失败);Policy Decorator 学残差(只在 sim 验证,百万步);PLD 预训 critic 再学单步残差(单步限制);DSRL 在 diffusion noise 空间学 latent policy(强约束 VLA、改进空间小);GR-RL 多阶段离线 BC + 在线 noise predictor。共同问题是:要么没 chunking 导致稀疏奖励下 credit assignment 失败,要么强约束 VLA 限制改进空间,要么单步无法匹配 VLA 的原生 chunk 接口。RLT 三个差异点:①RL token 作为压缩状态表示;②chunk-level action(C<H)缩短 TD horizon;③actor 直接条件化 VLA 参考动作 chunk 并正则化,把 online RL 变成对 VLA 先验的 local refinement 而非无约束搜索。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "camera images",
+        "type": "image",
+        "detail": "2 张腕部相机 + 1 张 base 相机,喂给冻结 π0.6,产出 VLA token embeddings z1:M"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "每个任务固定一条指令(实验里),经 VLA 处理;RL token 提取时实验性 drop 语言 embedding"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "关节位置+速度(screw 用关节位置;zip tie/Ethernet/charger 用末端位姿),直接进 actor-critic"
+      },
+      {
+        "name": "VLA reference action chunk",
+        "type": "continuous",
+        "detail": "冻结 π0.6 采样出的 H=50 步动作 chunk;RL actor 条件化于它(推理时必给,训练时 50% drop)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "RL action chunk",
+        "type": "continuous",
+        "detail": "C=10 步动作 chunk(50Hz 即 0.2s),14 维/步 = 140 维 chunked action"
+      },
+      {
+        "name": "Q value",
+        "type": "scalar",
+        "detail": "critic 估的 chunk-level C-step return,用于 off-policy TD 训练"
+      }
+    ],
+    "control_frequency": "50Hz 控制频率;VLA chunk H=50 (1s);RL chunk C=10 (0.2s),只执行前缀开环;每 2 步 stride 存 replay,1 秒数据≈25 样本",
+    "concat_protocol": "<bos_vla>[img_wrist1, img_wrist2, img_base, lang, proprio] → π0.6(冻结)→ z1:M token embeddings<eos_vla><bos_rltok>[appended e_rl=<rl>] → encoder g_φ → z_rl (1×2048)<eos_rltok><bos_rlstate>[z_rl ⊕ proprio]<eos_rlstate><bos_ref>[ã1:H ∼ π_vla(冻结采样)]<eos_ref><bos_actor>[π_θ(· | x, ã) → N(μ_θ(x,ã), σ²I) → a1:C]<eos_actor>\n\n逐段解释:\n- <bos_vla>...<eos_vla>:冻结 π0.6 处理图像+语言+proprio,产出 final-layer token embeddings z1:M(每 token 2048 维)。这步在 RL 训练时全程冻结,只前向。\n- <bos_rltok>...<eos_rltok>:在 z1:M 末尾 append 一个学习的特殊 embedding e_rl=<rl>,过一个轻量 encoder transformer g_φ,取 <rl> 位置的输出作为 z_rl(1×2048 维)。z_rl 是瓶颈——decoder d_φ 训练时要从它自回归重建原 z1:M,逼 z_rl 保留 task-relevant 信息。训练完 φ 后冻结。\n- <bos_rlstate>...<eos_rlstate>:RL 状态 x = (z_rl, proprio)。z_rl 提供 VLA 的压缩感知+行为先验,proprio 补充即时本体感受。\n- <bos_ref>...<eos_ref>:VLA 参考动作 chunk ã1:H(实际取前 C=10 步 ã1:C)。这是 RLT 的关键设计:actor 条件化于 VLA 的动作建议,而非从零生成。\n- <bos_actor>...<eos_actor>:小 MLP actor 输出高斯分布,采样 a1:C ∈ R^10×14。训练时 loss = -Q(x,a) + β·‖a-ã‖²(KL 正则 anchor 到 VLA)。\n\n三个坑:①language 在 RL token 提取阶段被实验性 drop(任务固定指令),不是序列拼接进 RL;②多视角在 VLA 内部已被处理成 token,RL 侧只见 z_rl;③训练时 reference action 50% 概率 drop 成零(防 actor 抄作业),推理时必给。chunk 内开环执行 C=10 步,然后重新观测+重新规划。"
+  },
+  "datasets": [
+    {
+      "name": "π0.6 预训练 corpus",
+      "size": "数万小时(继承)",
+      "note": "VLA 主干已在 PI 大规模跨本体数据上预训练,RLT 不重训"
+    },
+    {
+      "name": "Screw installation demos",
+      "size": "1-10h teleop",
+      "note": "M3 螺丝+电动螺丝刀,亚毫米对齐;10cm screwdriver 杠杆放大旋转误差;关键视觉线索只在对面腕部相机"
+    },
+    {
+      "name": "Zip tie fastening demos",
+      "size": "1-10h",
+      "note": "双臂协调穿扎带尾进窄锁孔,可变形物体毫米级容差"
+    },
+    {
+      "name": "Ethernet insertion demos",
+      "size": "1-10h",
+      "note": "Ethernet 接头插凹陷端口,需角度+力度果断插入"
+    },
+    {
+      "name": "Charger insertion demos",
+      "size": "1-10h",
+      "note": "充电器插排插,厘米级对齐,prongs/socket 观测不全"
+    }
+  ],
+  "architecture": {
+    "backbone": "π0.6 (SigLIP 400M + Gemma 4B VLM backbone + 860M action expert)",
+    "params": "VLA ~5.3B(冻结);RL token encoder/decoder φ 小 transformer(参数量论文未精确给,远小于 VLA);actor-critic 2 层 MLP hidden 256(zip/Ethernet/charger)或 3 层 MLP hidden 512(screw)",
+    "type": "frozen VLA + 瓶颈 RL token (encoder-decoder 预训) + 轻量 off-policy actor-critic (TD3 风格,chunk-level)",
+    "key_components": [
+      "冻结 π0.6 VLA:处理图像+语言+proprio,产出 token embeddings z1:M(每 2048 维),并采样参考动作 chunk ã1:H",
+      "RL token encoder g_φ:在 z1:M 末尾 append e_rl,过轻量 transformer,取 <rl> 位置输出 z_rl (1×2048) 作为瓶颈状态",
+      "RL token decoder d_φ + 线性 h_φ:训练时从 z_rl 自回归重建 z1:M(Lro loss),逼 z_rl 保留 task-relevant 信息;训练后冻结",
+      "Actor π_θ:小 MLP,输入 (z_rl, proprio, ã1:C),输出高斯 action chunk a1:C (C=10, 14维/步)",
+      "Critic Q_ψ:小 MLP + twin Q 集成(TD3 风格,取 min),输入 (z_rl, proprio, a1:C),估 chunk-level C-step return",
+      "Replay buffer B:聚合 VLA warmup rollouts + RL 自主 rollouts + 人类 teleop 干预,off-policy 复用",
+      "Human-in-the-loop:稀疏 success/failure 标签 + 可选 teleop 干预(替换 actor 输出,干预时 ã 也换成人类动作)"
+    ],
+    "why_this_design": "核心思想是分工:冻结 VLA 提供感知理解和行为先验(好的初始策略),小 actor-critic 负责在 critical phase 做 local refinement。RL token 是关键桥梁——把 VLA 的 2048 维高维 token 压成 1×2048 瓶颈向量,既保留 task-relevant 信息(靠 decoder 重建 loss 保证),又小到能挂轻量 MLP 做 sample-efficient online RL。三个设计选择互相强化:①chunk-level action (C=10 < H=50) 缩短 TD credit assignment horizon,匹配 VLA 原生 chunk 接口;②actor 条件化 VLA 参考 ã + KL 正则,把 RL 变成'编辑 VLA 动作'而非无约束搜索;③reference dropout 防 actor 抄作业、保独立 action 通路。三者叠加让几小时真实机器人数据就能精修毫米级任务。",
+    "numerical_sense": {
+      "backbone": "π0.6 = SigLIP 400M 视觉编码器 + Gemma 4B 语言模型 + 860M diffusion action expert;总参数 ~5.3B(冻结)",
+      "rl_token": "1×2048 维 bottleneck 向量;encoder/decoder φ 是轻量 transformer(论文未给精确层数,远小于 VLA)",
+      "actor_critic": "2 层 MLP hidden 256(zip tie/Ethernet/charger);3 层 MLP hidden 512(screw,因任务更难);参数量 << 1M 量级",
+      "action_chunk": "RL chunk C=10 步 @50Hz = 0.2s;VLA chunk H=50 步 @50Hz = 1s;每步 14 维 → RL actor 输出 140 维 chunked action",
+      "control_frequency": "50Hz 控制频率;chunk 内开环执行前 10 步(0.2s)后重新规划",
+      "rl_token_training": "φ 训 2000~10000 gradient steps on 单任务 demo data;VLA 可选 fine-tune(α>0);之后 VLA + φ 全冻结",
+      "online_rl": "400~1000 episodes/task;实际机器人数据 15 分钟~5 小时;update-to-data ratio G=5(高 U2D,低数据 regime 必需);2 critic 更新 per 1 actor 更新;reference action 50% dropout;β 是 KL 正则系数",
+      "replay_subsampling": "stride 2 存中间步,<x0,a0:C>,<x2,a2:C+2>...;1 秒数据 ≈ 25 RL 样本;off-policy 复用 VLA warmup + RL rollout + 人类干预",
+      "reward": "稀疏二值 +1(人类标 success)/0(failure);episode 长 30~120s(1500~6000 control steps);critical phase 5~20s(250~1000 steps)",
+      "critic": "twin Q 集成(TD3),取 min 算 target;γ 折扣(论文未给精确值);target network ψ'"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 1,
+      "title": "RLT 系统总览(门面图)",
+      "caption_original": "Our method introduces an 'RL token' into the VLA by training an encoder and decoder to produce a compact and meaningful representation from a VLA's internal features. The extracted representation is then used to train lightweight actor-critic networks with sample-efficient online RL, enabling very precise tasks to be fine-tuned with a few hours or even minutes of robot experience.",
+      "what_it_shows": "门面图。左:冻结 VLA + RL token encoder/decoder(产生 RL token)。中:小 actor-critic + critic + value Q(s,a) 在 RL token 上做 online RL。右:四个真实任务(螺丝/扎带/Ethernet/充电器)。核心信息:RLT 把'十亿参数 VLA 的 RL 微调'拆成'冻结 VLA + 几层 MLP actor-critic',所以能几小时真实数据训完。是论文分工哲学的视觉表达。",
+      "image_path": "figures/p01.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 4,
+      "title": "RL token 提取细节(最重要)",
+      "caption_original": "Details on RL token extraction. RLT adds an encoder-decoder transformer to a pretrained VLA. It produces a compressed embedding of the VLA representation (the RL token). This representation then enables data and parameter efficient fine-tuning during online RL.",
+      "what_it_shows": "全文最该看的图。π0.6 内部:SigLIP(400M)+Gemma(4B) VLM backbone 处理图像 token embeddings(N×2048),860M action expert。RLT 在 VLA token 序列末尾 append 一个 e_rl,过 encoder transformer g_φ,取该位置输出作为 RL token(1×2048)。decoder d_φ 训练时从 RL token 自回归重建原 embeddings(Lro loss),逼 RL token 成瓶颈。这张图同时回答'RL token 怎么提取、为什么是瓶颈、和 VLA 怎么接口'。",
+      "image_path": "figures/p04.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 6,
+      "title": "四个评测任务",
+      "caption_original": "The tasks in our experiments: each task contains a critical phase that requires high precision: (top) using a screwdriver to install a screw, (middle) fastening a zip tie, (bottom) plugging in an Ethernet cable and plugging in a charger.",
+      "what_it_shows": "三个真实任务的可视化:螺丝安装(电动螺丝刀+M3 螺丝,亚毫米对齐)、扎带紧固(双臂协调穿可变形扎带)、Ethernet+充电器插入。每个任务都有 critical phase(插入/紧固/旋转段)需高精度,5~20s/250~1000 步。是 RLT 设计动机的视觉证据——VLA 在 critical phase 最容易慢/失败,正是 RL 该精修的地方。",
+      "image_path": "figures/p06.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 4",
+      "page": 8,
+      "title": "Throughput 提升(主结果)",
+      "caption_original": "RLT increases throughput significantly over the base VLA policy, improving both the speed and consistency of the critical phase of each task. The improvement is especially pronounced for the harder tasks where the VLA policy is prone to making mistakes.",
+      "what_it_shows": "四任务(screwdriver/zip tie/Ethernet/charger)× 两设置(critical-phase / full-task)的 throughput(successes/10min)柱状图。RLT 全面大幅超过 Base Policy。难点任务(screw/zip tie)提升尤其显著——这正是 VLA 容易失败的地方。关键论点:RLT 不仅提成功率,更提速度(throughput 同时反映两者)。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 5",
+      "page": 8,
+      "title": "Success Rate 提升",
+      "caption_original": "RLT can boost success rates across multiple tasks. Where the VLA is already competent (e.g., the Ethernet task) it maintains success rate and increases throughput. For tasks that are challenging for the base VLA policy (screwdriver and zip tie) RLT leads to a significant improvement in success.",
+      "what_it_shows": "四任务 × 两设置的 success rate 柱状图。Ethernet/charger 上 VLA 已不错,RLT 维持成功率先(主要提速);screw/zip tie 上 VLA 弱,RLT 大幅提成功——screw full-task 从 base 提 40%,zip tie 提 60%。这张图区分'RLT 在 VLA 已强任务上的角色(提速不损精度)'vs'在 VLA 弱任务上的角色(根本性修复)'。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 8,
+      "title": "vs 其它 RL 算法(Ethernet)",
+      "caption_original": "Comparison to other RL algorithms. Methods that consider only single actions, rather than action chunks, (HIL-SERL, PLD) perform poorly. DSRL leads to high success but significantly lags behind in throughput.",
+      "what_it_shows": "Ethernet 任务上 RLT vs DAgger/HIL-SERL/PLD/DSRL 的 success rate + throughput。HIL-SERL/PLD(单步方法)学不出来——稀疏奖励下 horizon 太长 credit assignment 失败。DAgger/DSRL 成功率追平 RLT 但 throughput 明显低(DAgger 受限于人类示教速度,DSRL 强约束 VLA 改进空间小)。RLT 既高成功又高吞吐。是'chunking + RL token + 参考 anchor'三件套必要性的对照证据。",
+      "image_path": "figures/p08.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 7",
+      "page": 9,
+      "title": "消融:throughput vs 训练分钟",
+      "caption_original": "Throughput at different points in training for Ethernet task. The ablation study shows that each part of our method is important for good performance, and the full system learns fastest and performs best at the end. RLT outperforms the alternative policy after consuming only 5 minutes of data on the critical part of the task.",
+      "what_it_shows": "Ethernet throughput vs 训练分钟曲线,五条线(RLT/w-o Pass-Through/w-o RL Token/w-o Chunk/w-o BC Regularizer)+ Base Policy。全 RLT 5 分钟数据就超 Base Policy,15 分钟达最终最佳。w-o BC Regularizer(β=0)跌最狠——无 anchor 让 actor 在全动作空间裸搜。w-o RL Token(换 ResNet-10)throughput 降 50%——证明 VLA token 编码了 ResNet 没有的 manipulation-relevant 结构。w-o Chunk(单步)credit assignment 失败。w-o Pass-Through 最终能追平但学得慢+训练中失败多。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 8",
+      "page": 9,
+      "title": "消融:success rate vs 训练分钟",
+      "caption_original": "Success rate evaluation during training for the Ethernet task. RLT quickly matches the success rate of the VLA policy on the Ethernet insertion task, while boosting throughput. Not using the reference-action pass-through or not using the RL token leads to slower learning.",
+      "what_it_shows": "Ethernet success rate vs 训练分钟曲线。RLT 快速追平 VLA 的成功率同时提吞吐。w-o Pass-Through / w-o RL Token 学习更慢。和 Figure 7 配合:Figure 7 讲 throughput,Figure 8 讲 success rate,共同证明每个组件都对'快速收敛 + 高最终性能'有贡献。",
+      "image_path": "figures/p09.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 9",
+      "page": 9,
+      "title": "速度超过人类 teleop(关键 insight)",
+      "caption_original": "Speed on the Ethernet task. RLT significantly improves the speed of the Ethernet task. The final policy is faster even than the demonstrations produced by expert teleoperators. Half of the RL episodes during the critical insertion phase are faster than all of the teleoperated demonstrations.",
+      "what_it_shows": "Ethernet critical phase episode length 分布:Teleop 中位数 146 步,Base Policy 228 步(更慢,有 probing 行为),RLT 66 步。RLT 中位数不到 teleop 一半!且 RLT 一半 episode 比 teleop 全部都快。关键观察:RLT 不只是模仿,它学出 teleop 数据里没有的策略——直接接近端口、压入并轻微 wiggle 利用 compliance,流畅一次插入。这是'RL 能超越示教数据'的最有力证据。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "RL token:瓶颈表示压缩 VLA 内部 embedding",
+      "problem_it_solves": "VLA 的 final-layer token embedding 高维(2048×M),直接喂 online RL 既算力贵又样本低效;但用 ResNet 这类通用视觉编码器又丢了 VLA 学到的 manipulation-relevant 结构",
+      "how": "在 VLA token 序列末尾 append 一个学习 embedding e_rl,过轻量 encoder transformer g_φ,取该位置输出 z_rl(1×2048)。训练 φ 时用一个 decoder d_φ 从 z_rl 自回归重建原 embeddings(Lro = Σ‖h_φ(d_φ([z_rl, z̄1:i-1]))_i - z̄_i‖²),逼 z_rl 成瓶颈——必须保留足够信息才能重建。在任务 demo 数据上训 2000~10000 步后冻结 φ。",
+      "why_it_works": "消融证明换 ResNet-10 throughput 降 50%——RL token 编码了通用视觉编码器没有的 manipulation 结构。瓶颈设计让 z_rl 既保 VLA 知识又小到能挂轻量 MLP。stop-gradient 防止 decoder 把 VLA embedding 拉偏,φ 只学'怎么压缩'不动 VLA。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Chunk-level actor-critic 匹配 VLA 原生接口",
+      "problem_it_solves": "单步 RL 方法(ConRFT/PLD/HIL-SERL)在 50Hz 稀疏奖励任务上 credit assignment horizon 太长,学不出来",
+      "how": "actor/critic 都在 chunk 上操作:RL chunk C=10(0.2s)<VLA chunk H=50(1s)。critic Qψ(x, a1:C) 估 chunk-level C-step return,target = Σγ^t'r_t' + γ^C·E[Q(x', a')]。actor 输出整个 10 步 chunk。replay stride 2 存中间步,1 秒数据≈25 样本。",
+      "why_it_works": "C=10 把 TD horizon 从 1500~6000 步(整个 episode)缩到 10 步级别,稀疏 reward 信号能有效传播。同时 C<H 让策略比 VLA 更 reactive(0.2s 重新规划 vs 1s)。这是 RLT vs 单步方法的核心差异——Ethernet 任务上 HIL-SERL/PLD 完全失败,RLT 成功。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Reference-action conditioning + KL anchor",
+      "problem_it_solves": "从零学一个高维 140 维 action chunk 的 actor 在几小时数据下不可行;无约束探索会陷入失败模式",
+      "how": "actor 不从零生成,而是条件化于 VLA 采样的参考 chunk ã1:C:πθ(a|x, ã) = N(μθ(x,ã), σ²I)。loss 加 KL 正则 Lπ = E[-Q(x,a) + β·‖a-ã‖²]。等于把 online RL 变成'在 VLA 先验附近做 local refinement'。推理时 ã 必给;训练时 50% 概率 drop 成零(reference action dropout)。",
+      "why_it_works": "条件化 ã 让 actor 直接暴露于 VLA 的多模态动作分布(单模态高斯 actor 否则无法恢复多模态)。KL anchor 限制探索在 VLA 附近,几小时数据够。dropout 防 actor 抄 ã 作业——逼它保独立 action 通路,critic 有信号后自然学会偏离 ã。消融:w-o BC Regularizer 跌最狠,w-o Pass-Through 最终能追平但学得慢+失败多。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Critical-phase targeting + 两阶段训练",
+      "problem_it_solves": "整任务 30~120s,RL 逐段精修算力/数据预算不够;且 VLA 在 easy phase 已够好,不该浪费 RL capacity",
+      "how": "每 episode 先用 base VLA 跑 easy phase,人类操作员决定何时切到 RL policy 跑 critical phase(类 interactive imitation learning)。RL 只在 critical phase 存/训 transition。两阶段:screw/zip tie 先在 critical-phase only 训,再扩到 full-task(让 RL 策略对 VLA 诱导的初始状态分布鲁棒)。最后可选短 fine-tune VLA 让它学会何时切 RL policy。",
+      "why_it_works": "把数据采集和 credit assignment 集中在 RL 最该发力的地方,几小时数据够。full-task 阶段让策略对 VLA 诱导的更宽状态分布鲁棒,部署更稳。这个设计是 RLT 'practical' 的关键——承认 VLA 不该全推翻,只在它最弱处补。",
+      "detail_level": "mid"
+    },
+    {
+      "name": "Off-policy + 高 U2D + 异步 rollout",
+      "problem_it_solves": "真实机器人数据贵,每 episode 都要时间+磨损;几小时预算要榨干每个 transition",
+      "how": "off-policy TD3 风格 critic(twin Q 取 min,target network)+ replay buffer 聚合 VLA warmup rollouts + RL 自主 rollouts + 人类 teleop 干预。update-to-data ratio G=5(每条数据训 5 次),低数据 regime 必需。rollout 和学习异步。每 2 actor 更新做 1 critic 更新。",
+      "why_it_works": "off-policy 让所有数据(VLA 探索 + 人类干预 + RL 自主)都进 buffer 复用;高 U2D 在数据稀缺下榨干每条 transition 的学习信号;twin Q + target network 防 value overestimation。这套是 SERL/RL100 验证过的 sample-efficient real-world RL 配方,RLT 直接继承,只是把状态表示从 ResNet 换成 RL token。",
+      "detail_level": "mid"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "Critical phase speedup (hardest phase)",
+      "value": "up to 3× faster",
+      "baseline_best": "base π0.6 VLA",
+      "setup": "四任务 critical phase,15min~5h 真实数据"
+    },
+    {
+      "metric": "Screw installation success rate (full-task)",
+      "value": "+40% over base",
+      "baseline_best": "base π0.6 VLA",
+      "setup": "M3 螺丝亚毫米对齐,5h 数据"
+    },
+    {
+      "metric": "Zip tie fastening success rate (full-task)",
+      "value": "+60% over base",
+      "baseline_best": "base π0.6 VLA",
+      "setup": "双臂穿扎带,5h 数据"
+    },
+    {
+      "metric": "Ethernet speed (episode length median)",
+      "value": "66 steps (RLT)",
+      "baseline_best": "146 steps (expert teleop) / 228 steps (base VLA)",
+      "setup": "RLT 比 teleop 快 2.2×,一半 episode 比所有 teleop 快"
+    },
+    {
+      "metric": "Ethernet success rate vs RL baselines",
+      "value": "RLT 高成功",
+      "baseline_best": "DAgger/DSRL 追平成功但 throughput 明显低;HIL-SERL/PLD(单步)失败",
+      "setup": "四 baseline 同等数据量"
+    },
+    {
+      "metric": "Sample efficiency (Ethernet)",
+      "value": "5min 数据即超 base policy",
+      "baseline_best": "base π0.6 VLA",
+      "setup": "total experiment ~40min"
+    },
+    {
+      "metric": "Ablation: w/o RL token (换 ResNet-10)",
+      "value": "throughput 降 50%",
+      "baseline_best": "full RLT",
+      "setup": "证明 RL token 编码 manipulation 结构"
+    },
+    {
+      "metric": "Ablation: w/o BC regularizer (β=0)",
+      "value": "最大单点跌幅",
+      "baseline_best": "full RLT",
+      "setup": "无 anchor 让 actor 全空间裸搜"
+    },
+    {
+      "metric": "Robot data budget",
+      "value": "15min~5h per task",
+      "baseline_best": "—",
+      "setup": "400~1000 episodes"
+    }
+  ],
+  "insights": [
+    "分工哲学:VLA 该当感知+行为先验,fine-tune 该靠小 actor-critic 在瓶颈表示上做 local refinement——'全量 RL 微调 VLA'和'小模型从零 RL'都是错的两极端(p1, p4)。",
+    "RL token 是 VLA → 小 RL 的关键桥梁:它把 2048×M 高维 token 压成 1×2048 瓶颈向量,靠 decoder 重建 loss 保证不丢 task-relevant 信息,又小到能挂几层 MLP。换 ResNet-10 throughput 降 50%,证明 VLA token 编码了通用视觉编码器没有的 manipulation 结构(p9 Figure 7)。",
+    "chunk-level action 是稀疏奖励 RL 的必需品:50Hz 任务 episode 1500~6000 步,单步 RL credit assignment 失败;C=10 把 TD horizon 缩到 10 步级,reward 信号才能传播。HIL-SERL/PLD 单步方法在 Ethernet 完全失败就是证据(p8 Figure 6)。",
+    "RL 能学到示教数据里没有的策略:RLT Ethernet 中位数 66 步,比 expert teleop 的 146 步快 2.2 倍,一半 episode 比所有 teleop 都快。RLT 学会直接压入+wiggle 利用 compliance,teleop 数据里没有这个策略——这是 RL 超越 imitation 的最有力证据(p9 Figure 9)。",
+    "reference action 50% dropout 是反直觉但必要的 trick:条件化 ã 会让 actor 倾向抄作业(尤其 critic 还没信号时);dropout 逼 actor 保独立 action 通路,critic 有信号后自然学会偏离 ã(p5)。",
+    "critical-phase targeting 是 practicality 的关键:承认 VLA 不该全推翻,只在它最弱的 critical phase 用 RL 补。几小时数据集中在一个 5~20s 段,才有可能学会(p5-6)。"
+  ],
+  "novelty_vs_peers": [
+    "vs RECAP / 全量 VLA RL:RECAP 训整个 π*0.6,需大规模数据、算力贵、不适合几小时 adaptation;RLT 冻结 VLA,只训小 actor-critic,15min~5h 真实数据就能学。",
+    "vs ConRFT / PLD(单步 residual):ConRFT 冻结 VLA encoder 训单步 action head,无 chunking,稀疏奖励长 horizon credit assignment 失败;RLT chunk-level (C=10) 匹配 VLA 原生接口,缩短 TD horizon。PLD 学单步残差+超参缩放,同样单步限制。",
+    "vs DSRL(在 diffusion noise 空间学 latent policy):DSRL 强约束 VLA 动作生成、改进空间小,throughput 明显输 RLT;RLT actor 直接条件化参考动作并 KL 正则,允许更自由的 local refinement,既高成功又高吞吐。",
+    "vs Policy Decorator(残差+超参缩放):只在 sim 验证、百万步数据;RLT 在真实机器人几小时数据内验证四任务。",
+    "vs GR-RL(多阶段离线 BC + 在线 noise predictor):GR-RL 多阶段针对长horizon 鞋带任务;RLT 通用 critical-phase targeting + chunk-level actor-critic,更直接。",
+    "vs HIL-SERL/SERL/RL100(小模型从零 RL):这些用 ResNet encoder,放弃 VLA 泛化先验;RLT 用冻结 VLA + RL token,既保 VLA 知识又拿到小模型样本效率——HIL-SERL 在 Ethernet 完全失败是直接对照。"
+  ],
+  "limitations": [
+    "论文自承:仍需人在环——reward 信号、干预纠正、RL/base policy 切换都靠人。作者明说全自主 RL pipeline(用 reward model + progress prediction)是 future work(p7)。",
+    "论文自承:critical-phase 隔离评测降低方差但也简化了问题;full-task 评测显示 compounding error 仍让整体成功率低于 critical-phase only(p7)。",
+    "论文自承:只在固定语言指令的任务上验证(每任务一条指令);RL token 提取时实验性 drop 语言 embedding——多指令/语言条件 RL 未验证(p4 footnote)。",
+    "我们读出:四个任务都是 50Hz 双臂/单臂精密插入类,形态接近;RLT 在更动态任务(如接球、长horizon 多阶段装配)是否仍几小时收敛未证。",
+    "我们读出:actor-critic 是 Gaussian 单模态,靠 reference ë 暴露多模态;如果 VLA 本身多模态弱(参考 chunk 单一模式),RLT 的多模态恢复能力受限,论文未测。",
+    "我们读出:RL token encoder/decoder 的精确参数量、层数论文未给(只图示'轻量 transformer'),复现时这部分的规格需要从 code release 补;β 的具体值也没明示。"
+  ],
+  "reproducibility": {
+    "code": "https://pi.website/research/rlt (PI 代码 release 声明)",
+    "weights": "依赖 π0.6 base VLA(PI release);RL token + actor-critic checkpoint 论文未明示是否开源",
+    "sim_benchmark": "无(sim 都没用,全真实机器人)",
+    "real_eval": "四真实任务(screw/zip tie/Ethernet/charger),critical-phase + full-task 两设置,50 episodes/task"
+  },
+  "tags": [
+    "VLA",
+    "online RL",
+    "fine-tuning",
+    "actor-critic",
+    "RL token",
+    "bottleneck representation",
+    "chunked actions",
+    "π0.6",
+    "Physical Intelligence",
+    "precision manipulation"
+  ]
+}

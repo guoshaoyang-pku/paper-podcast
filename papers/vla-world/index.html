@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving</title>
+<style>
+:root {
+  --bg:#fafbfa; --paper:#fff; --ink:#17201c; --muted:#65706b;
+  --faint:#8b9690; --line:#dfe6e2; --accent:#0f766e; --accent2:#8a5a00;
+  --soft:#eaf5f2; --warn:#fff7e6; --danger:#9f2f2f; --dark:#111614;
+  --code-bg:#1e2622; --code-fg:#e8f1ee;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  line-height:1.7; }
+header.top { background:var(--dark); color:#e8f1ee; padding:28px 40px; }
+header.top .back-home { display:inline-block; color:#5eead4; text-decoration:none;
+  font-size:14px; font-weight:600; margin-bottom:14px; }
+header.top .back-home:hover { text-decoration:underline; }
+header.top h1 { margin:0 0 8px; font-size:26px; line-height:1.3; }
+header.top .meta { color:#9fb3ac; font-size:14px; }
+header.top .meta a { color:#5eead4; }
+header.top .links { margin-top:14px; display:flex; gap:18px; flex-wrap:wrap; }
+header.top .links a { color:#5eead4; text-decoration:none; font-size:14px;
+  border:1px solid #2a3934; padding:6px 12px; border-radius:6px; }
+header.top .links a:hover { background:#1e2622; }
+nav.tabs { background:var(--paper); border-bottom:1px solid var(--line);
+  padding:0 40px; position:sticky; top:0; z-index:10; display:flex; gap:4px; }
+nav.tabs button { background:none; border:none; border-bottom:3px solid transparent;
+  padding:16px 18px; font-size:15px; color:var(--muted); cursor:pointer; font-weight:600; }
+nav.tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+main { max-width:1100px; margin:0 auto; padding:32px 40px; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+h2 { border-bottom:2px solid var(--line); padding-bottom:8px; margin-top:36px; }
+h3 { margin-top:28px; }
+h4 { margin-top:20px; color:var(--accent); }
+table.md-table { border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }
+table.md-table th, table.md-table td { border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+table.md-table th { background:var(--soft); color:var(--accent); font-weight:700; }
+table.md-table.numerical td:first-child { font-weight:600; width:140px; color:var(--muted); }
+table.md-table.results td:nth-child(2) { color:var(--accent); }
+pre.code { background:var(--code-bg); color:var(--code-fg); padding:16px 18px;
+  border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.55;
+  font-family:"SF Mono",Menlo,Consolas,monospace; }
+pre.code.protocol { border-left:4px solid var(--accent); }
+.protocol-explain { margin-top:12px; }
+.protocol-explain .proto-item { margin:6px 0; padding-left:14px; border-left:2px solid var(--line); }
+.protocol-explain .proto-note { color:var(--muted); font-size:14px; }
+.figures-grid { display:grid; grid-template-columns:1fr; gap:28px; margin-top:20px; }
+.figure-card { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:20px; }
+.figure-card.badge-key { border-left:4px solid var(--accent); }
+.figure-card.badge-supportive { border-left:4px solid var(--faint); }
+.figure-head { display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+.fig-id { font-weight:700; color:var(--accent); }
+.fig-page { color:var(--muted); }
+.badge { padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; text-transform:uppercase; }
+.badge-key { background:var(--soft); color:var(--accent); }
+.badge-supportive { background:#f0f2f1; color:var(--muted); }
+.figure-card img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:6px; margin:10px 0; }
+.figure-card .caption { color:var(--muted); font-size:13px; }
+.figure-card .whatitshows { margin-top:10px; }
+.arch-prose { max-width:none; }
+.arch-prose pre.code { margin:16px 0; }
+.podcast-prose { max-width:780px; }
+.podcast-prose h2 { color:var(--accent); }
+.podcast-prose pre.code { background:#fff; color:var(--ink); border:1px solid var(--line); }
+.audio-player { background:var(--soft); border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; }
+.audio-player h3 { margin:0 0 12px; color:var(--accent); }
+.audio-player audio { display:block; }
+.audio-player .dur { margin:8px 0 0; color:var(--muted); font-size:13px; }
+ul.insights li { margin:8px 0; }
+ul.limitations li { color:var(--muted); }
+.footer { text-align:center; color:var(--faint); padding:40px 20px; font-size:13px; }
+@media (max-width:780px) {
+  main { padding:20px; }
+  header.top { padding:20px; }
+  nav.tabs { padding:0 12px; overflow-x:auto; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back-home" href="../index.html" title="返回首页">← Home</a>
+  <h1>VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving</h1>
+  <div class="meta">
+    Guoqing Wang、Pin Tang、Xiangxuan Ren et al. · Shanghai Jiao Tong University (MoE Key Lab of AI, AI Institute) · Huawei Central Research Institute · 2026-04-10 · arXiv:2604.09059
+  </div>
+  <div class="links">
+    <a href="source.pdf" target="_blank">📄 source.pdf</a>    <a href="https://vlaworld.github.io(项目页)" target="_blank">🔗 code</a>    <a href="../../SCHEMA.md" target="_blank">📋 schema</a>  </div>
+</header>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="architecture">Architecture</button>
+  <button class="tab-btn" data-tab="figures">Figures</button>
+  <button class="tab-btn" data-tab="podcast">Podcast</button>
+</nav>
+<main>
+<section class="tab-panel active" id="overview"><p class='one-liner'>把自动驾驶的 VLA 和世界模型合并:先用短期轨迹预测引导生成下一帧未来图像,再对这个自己想象出来的未来帧做反思推理修正长期轨迹,用 Qwen2-VL-2B + VQGAN 自回归出视觉 token,三阶段(预训练→SFT→GRPO)训练。</p><h2>问题</h2><p><strong>要解决什么</strong>：自动驾驶里 VLA 直接从观测出动作,缺对其它动态 agent 的时空建模,没前瞻;世界模型能生成未来但只能'模拟'不能'推理评估'想象出来的未来。VLA-World 要把世界模型的预测想象和 VLA 的反思推理合并:先想象未来帧,再对自己想象出来的未来做反思,修正轨迹。</p><p><strong>为什么 prior work 不够</strong>：VLA 方法(ELM/OmniDrive/DriveMoDrive 等)直接映射观测到轨迹,缺显式时空动态建模,难以预测复杂场景演化。世界模型(DriveDreamer/DrivingWorld/OccWorld 等)能生成未来但缺反思推理,只模拟不评估。FSDrive 虽引入未来帧作 CoT 中间步,但只生成前视、直接回归 waypoint 不评估物理可行性,且缺 RL 强化反思链。</p><h2>输入 / 输出</h2><h3>输入</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>multi-view observations o_t</td><td>image</td><td>nuScenes 6 个相机视角图像 I^k_t;经 Qwen2-VL 视觉编码器编码</td></tr>
+<tr><td>ego status S_t</td><td>vector</td><td>自车速度、加速度、yaw rate 等 CAN 信号</td></tr>
+<tr><td>mission goal g</td><td>text/discrete</td><td>导航指令 left/right/forward</td></tr>
+</tbody></table>
+<h3>输出</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>perception results</td><td>text</td><td>检测周围动态 agent(车、行人)、3D 位置、运动路径、路肩距离、可行驶区域边界</td></tr>
+<tr><td>short-term prediction</td><td>text+trajectory</td><td>下 0.5s 的 waypoint 和行驶方向,作为生成未来帧的条件</td></tr>
+<tr><td>imagined future frame x̂_{t+1}</td><td>image</td><td>VQGAN 自回归生成的下一帧视觉 token 序列(任一视角,如 CAM_FRONT_LEFT 0.5s later),128×192</td></tr>
+<tr><td>reflective reasoning</td><td>text</td><td>对想象未来帧的反思:识别重要 agent、潜在风险、安全裕度</td></tr>
+<tr><td>final trajectory τ̃_{t:t+H}</td><td>trajectory</td><td>修正后的 3s horizon ego 轨迹,0.5s 间隔,共 6 个 waypoint(BEV 坐标)</td></tr>
+</tbody></table>
+<p><strong>控制频率</strong>：推理 step 0.5s;轨迹 horizon 3s(6 个 waypoint);nuScenes 2Hz 采样;8×80GB GPU 训练</p>
+<h3>输入拼接 protocol</h3>
+<pre class="code protocol"><code>&lt;bos_obs&gt;[ Qwen2VL(I^1_t...I^6_t, S_t) ]&lt;eos_obs&gt;&lt;bos_goal&gt;[ g ]&lt;eos_goal&gt;&lt;bos_perception&gt;[ 检测+3D位置+路肩距离 文本 ]&lt;eos_perception&gt;&lt;bos_prediction&gt;[ 0.5s waypoint + direction 文本 ]&lt;eos_prediction&gt;&lt;bos_visual&gt;[ VQGAN token 序列 q^k_1...q^k_N (生成未来帧) ]&lt;eos_visual&gt;&lt;bos_think&gt;[ 反思文本:重要agent+风险 ]&lt;eos_think&gt;&lt;bos_action&gt;[ 高层动作 ]&lt;eos_action&gt;&lt;bos_answer&gt;[ 3s 轨迹 waypoint 列表 ]&lt;eos_answer&gt;
+逐 token 解释:</code></pre>
+<div class='protocol-explain'>
+<p class='proto-item'><bos_obs>...<eos_obs>:6 个相机视角图像 + ego status,经 Qwen2-VL 视觉编码器,作为整个 pipeline 的基础上下文。多视角在 token 序列层拼接(每个视角一套视觉 token),不是通道拼接。</p>
+<p class='proto-item'><bos_goal>...<eos_goal>:mission goal g(left/right/forward),离散导航指令,作自回归上下文。</p>
+<p class='proto-item'><bos_perception>...<eos_perception>:感知输出文本,检测周围动态 agent 及 3D 位置、路肩距离、可行驶区域——是模型自回归生成的结构化场景描述,形成 scene-level world state。</p>
+<p class='proto-item'><bos_prediction>...<eos_prediction>:短期预测,下 0.5s 的 waypoint 和方向,作生成未来帧的条件。这个短期轨迹由 ego 历史状态 + goal 经物理动力学(惯性+意图加速度融合)预测。</p>
+<p class='proto-item'><bos_visual>...<eos_visual>:想象未来帧——VQGAN codebook 的离散视觉 token 序列,自回归生成。条件是 o_{1:t} + 短期预测 τ̂_{t+1}。可指定任一视角(如 CAM_FRONT_LEFT 0.5s later),这是 VLA-World 对 FSDrive 的关键扩展(FSDrive 只生成前视)。</p>
+<p class='proto-item'><bos_think>...<eos_think>:反思推理文本,分析想象未来帧里的重要 agent、运动线索、潜在交互,量化安全裕度——把视觉证据转成情境理解。</p>
+<p class='proto-item'><bos_action>...<eos_action>:高层动作决策(manoeuvre),对齐 mission goal 和反思结果。</p>
+<p class='proto-item'><bos_answer>...<eos_answer>:最终修正轨迹,3s horizon,0.5s 间隔,6 个 BEV waypoint。</p>
+<p class='proto-note'>三个坑:</p>
+<p class='proto-note'>1) language(goal/perception/prediction/think/action)全部是自回归 token 序列拼接,这点和 DreamZero/Motus 的 cross-attention 注入完全不同——VLA-World 走纯 LLM 自回归范式,所有模态(包括视觉生成)都是 next-token prediction。视觉未来帧是 VQGAN 离散 token,不是连续 latent diffusion。</p>
+<p class='proto-note'>2) 多视角是序列拼接(6 个视角的视觉 token 都在序列里),且生成时可指定任一视角——多视角一致性靠 Stage1 预训练显式约束(不同于 FSDrive 只生前视)。</p>
+<p class='proto-note'>3) 训练和推理序列结构一致,但三阶段侧重点不同:Stage1 只激活视觉生成(只到 <eos_visual>);Stage2 SFT 全 pipeline 监督(perception→prediction→visual→think→action→answer);Stage3 RL 用 GRPO 对完整输出采样打分。推理时是完整 pipeline 一次自回归出全部。</p>
+</div><h2>数据集</h2><table class='md-table'><thead><tr><th>数据</th><th>规模</th><th>备注</th></tr></thead><tbody><tr><td>nuScenes-GR-20K(自建)</td><td>20K 样本</td><td>从 nuScenes 衍生,专为生成未来帧+条件推理设计,SFT 和 RL 阶段用</td></tr><tr><td>nuScenes(主评测)</td><td>1000 scenes</td><td>标准自动驾驶 benchmark,6 相机,2Hz,带 3D 标注;L2 误差和 collision rate 评测</td></tr><tr><td>图像-指令预训练数据</td><td>480k(图1)</td><td>Stage1 视觉生成激活,大规模图像-指令对齐,继承自 FSDrive 对齐策略</td></tr></tbody></table><h2>架构（摘要）</h2><h3>主干与结构</h3>
+<p><strong>backbone</strong>：Qwen2-VL-2B(多模态 LLM,初始化自 FSDrive 对齐策略)+ VQGAN(视觉 tokenizer,离散 codebook)</p>
+<p><strong>参数</strong>：2B(Qwen2-VL-2B);VQGAN tokenizer 离散化图像</p>
+<p><strong>类型</strong>：自回归 next-token prediction VLM + VQGAN 离散视觉生成 + 三阶段训练(预训练/SFT/GRPO)</p>
+<h4>关键组件</h4><ul>
+<li>Perception 模块:6 相机视角 + ego status → 检测动态 agent、3D 位置、路肩距离、可行驶区域,输出结构化 scene-level world state</li>
+<li>Short-term Prediction 模块:ego 历史状态 + goal → 下 0.5s waypoint + 方向(物理动力学:惯性加速度 + 意图加速度融合)</li>
+<li>Condition-guided Generation 模块:VQGAN 自回归生成未来帧视觉 token,条件是 o_{1:t} + 短期预测 τ̂_{t+1},可指定任一视角</li>
+<li>Thinking with Visual Tokens 模块:对想象未来帧做反思推理,识别重要 agent、风险、安全裕度</li>
+<li>Action & Trajectory Planning 模块:输出高层动作 + 3s horizon 修正轨迹(0.5s 间隔,6 个 BEV waypoint)</li>
+<li>GRPO 强化学习:value-free,组内归一化优势,5 个 rule-based reward(格式/短期预测/视觉约束/动作F1/轨迹)</li>
+</ul>
+<h4>为什么这样设计</h4><p>用纯自回归 next-token 范式统一感知、生成、推理、规划——所有模态(包括视觉未来帧)都是 token,一套 Qwen2-VL 主干搞定。短期轨迹引导生成未来帧,是为了把高维未来采样到'合理可信的空间',再对这个具体未来做反思,而不是盲目 rollout。三阶段训练对应三种知识:Stage1 生成知识(冷启动理解世界),Stage2 概念知识(SFT 建因果链),Stage3 推理知识(GRPO 探索最优策略)。VQGAN 离散视觉 token 而非连续 latent,是为了和 LLM 自回归范式天然兼容。</p>
+<h4>数值 sense</h4>
+<table class='md-table numerical'><thead><tr><th>项</th><th>值</th></tr></thead><tbody>
+<tr><td>DiT 规格</td><td>Qwen2-VL-2B 主干(2B 参数,VLM 标准 transformer);VQGAN tokenizer 离散 codebook,图像→离散 token 序列</td></tr>
+<tr><td>分辨率</td><td>生成图像 128×192(FSDrive 同款);输入 6 相机视角 nuScenes 原生分辨率</td></tr>
+<tr><td>VAE</td><td>VQGAN(非 VAE):图像离散化为 codebook token 序列,每个 token 是 codebook 一个 entry;无连续 latent 压缩比概念,token 数 = N(论文未给精确 N)</td></tr>
+<tr><td>每帧 latent 维</td><td>VQGAN codebook token 序列,每帧 N 个离散 token;128×192 图像典型 ~256-1024 token 量级(具体 N 论文未明示)</td></tr>
+<tr><td>Chunk</td><td>推理 step 0.5s;轨迹 horizon 3s = 6 个 waypoint(0.5s 间隔);nuScenes 2Hz 采样</td></tr>
+<tr><td>上下文</td><td>o_{1:t} 历史观测(多帧)+ ego status + goal;具体历史长度论文未明示,nuScenes 标准用过去 0.5-2s</td></tr>
+<tr><td>动作</td><td>轨迹 waypoint(BEV 2D 坐标 p∈R²);高层动作为离散 manoeuvre(forward/left/right + keep/acc/dec/stop)</td></tr>
+<tr><td>训练</td><td>Stage1 预训练:30 epochs, AdamW lr 5e-4, per-device batch 16, 8×80GB GPU,480k 图像-指令。Stage2 SFT:12 epochs, AdamW lr 1e-4,nuScenes-GR-20K。Stage3 GRPO:1 epoch, lr 1e-6, global batch 16, 每 prompt 采样 8 候选。三阶段都在 8×80GB GPU 上。</td></tr>
+</tbody></table><p>→ 详见 <strong>Architecture</strong> tab。</p><h2>关键结果</h2><table class='md-table results'><thead><tr><th>指标</th><th>值</th><th>最强 baseline</th><th>setup</th></tr></thead><tbody>
+<tr><td>nuScenes 规划 L2 avg (ST-P3 metrics, 带 ego-state)</td><td><strong>0.26m</strong></td><td>FSDrive* 0.28m / OmniDrive* 0.33m / EMMA* 0.32m</td><td>1s/2s/3s 平均,autoregressive methods</td></tr>
+<tr><td>nuScenes Collision avg (ST-P3, 带 ego-state)</td><td><strong>0.08%</strong></td><td>FSDrive* 0.10% / OmniDrive* 0.30%</td><td>1s/2s/3s 平均</td></tr>
+<tr><td>nuScenes 规划 L2 avg (UniAD metrics, 带 ego-state)</td><td><strong>0.42m</strong></td><td>FSDrive* 0.45m / OccWorld 1.40m</td><td>UniAD 协议</td></tr>
+<tr><td>nuScenes Collision avg (UniAD, 带 ego-state)</td><td><strong>0.12%</strong></td><td>FSDrive* 0.16% / OccWorld 0.87%</td><td>UniAD 协议</td></tr>
+<tr><td>未来帧生成 FID (nuScenes)</td><td><strong>9.8</strong></td><td>FSDrive 10.1 / GEM 10.5 / Doe-1 15.9</td><td>128×192 分辨率,autoregressive 生成</td></tr>
+<tr><td>动作预测 F1 forward</td><td><strong>95.88%</strong></td><td>Qwen2-VL-2B† 92.60% / Qwen2-VL-2B 62.43%</td><td>lateral 动作</td></tr>
+<tr><td>动作预测 F1 left/right avg</td><td><strong>74.22% / 75.06%</strong></td><td>Qwen2-VL-2B† 61.78% / 66.52%</td><td>转向动作,VLA-World 提升最大</td></tr>
+<tr><td>消融 w/o Reasoning L2 avg</td><td><strong>0.85m (w/o)</strong></td><td>VLA-World full 0.30m</td><td>ST-P3,反思模块贡献最大(+0.55m)</td></tr>
+</tbody></table><h2>Insights</h2><ul class='insights'><li>想象+反思闭环的关键在于把高维未来采样到'合理可信空间'再反思——短期轨迹预测起到了把这个采样约束到物理可行区域的作用(p4 Intuitive Insight)。</li><li>反思模块贡献最大:消融 w/o Reasoning L2 从 0.30 涨到 0.85(+0.55m),远超 w/o Perception(+0.45)和 w/o Generation(+0.38)。说明'对想象未来做推理'比'生成未来'本身更重要(p8 Table 4b)。</li><li>SFT 比 RL 重要:消融 w/o SFT L2 0.85 vs w/o RL L2 0.71。RL 没有 SFT 冷启动无法导航大搜索空间,SFT 建因果链是根基,RL 只是精修(p8 Table 4a)。</li><li>纯自回归 next-token 范式能统一感知/生成/推理/规划——所有模态(包括视觉未来帧)都是 token,Qwen2-VL 一套主干搞定。VQGAN 离散视觉 token 让视觉生成天然兼容 LLM 自回归,不需要额外的 diffusion head。</li><li>多视角 goal-conditioned 生成是 VLA-World 对 FSDrive 的关键扩展:FSDrive 只生前视,VLA-World 能按预测方向请求对应视角,左转请求左视——想象更贴合驾驶意图(p5 Sec 3.3)。</li></ul><h2>vs 同类工作</h2><ul class=''><li>vs FSDrive:FSDrive 引入未来帧作 CoT 中间步,但只生成前视、直接回归 waypoint 不评估物理可行性;VLA-World 多视角生成 + 反思修正轨迹 + GRPO 强化反思链。VLA-World 是 FSDrive 的直接升级版(同 Qwen2-VL-2B 初始化)。</li><li>vs DreamZero/BagelVLA(机器人 WAM):机器人 WAM 是 video-action 联合或 cascaded 生成动作;VLA-World 是自动驾驶,轨迹规划而非关节控制,且用 VQGAN 离散 token 而非连续 latent diffusion,纯 LLM 自回归范式。</li><li>vs DriveDreamer/DrivingWorld/OccWorld(驾驶世界模型):这些只生成未来不推理;VLA-World 在生成后加反思闭环,且用 VLM 主干而非纯视频 diffusion。</li><li>vs OmniDrive/ELM/DriveMoE(驾驶 VLA):这些直接映射观测到动作缺时空动态建模;VLA-World 显式建模未来演化(生成未来帧)并反思。</li><li>vs DreamVLA/WorldVLA(统一 VLA+世界模型):VLA-World 更聚焦驾驶场景的多视角+轨迹规划,且三阶段训练(含 GRPO)更系统。</li></ul><h2>局限</h2><ul class='limitations'><li>论文未显式列 Limitations 章节(只有 Conclusion),以下为我们读出。</li><li>我们读出:生成分辨率仅 128×192(Table 2),远低于实际驾驶需求(高清摄像头 1080P+),低分辨率未来帧能否支持精细风险识别(如远距离行人)未讨论。</li><li>我们读出:短期预测仅 0.5s、长程轨迹 3s,对高速场景(高速公路)3s horizon 可能不够;且 0.5s 生成一帧,帧率低(2Hz),对快速动态场景(突然切入)响应可能滞后。</li><li>我们读出:GRPO 的 5 个 reward 都是 rule-based,设计依赖人工先验;reward 之间的权重 λ 未给具体值,调参空间大;rule-based reward 在复杂城市场景(如施工区、非标准车道)是否够用未讨论。</li><li>我们读出:VQGAN 离散视觉 token 虽兼容 LLM 自回归,但生成质量受 codebook 限制(FID 9.8 仍高于 diffusion 类 GEM 10.5 接近但未显著超越);且离散化损失高频细节,对安全关键场景(如交通灯颜色)可能不利。</li><li>我们读出:6 个视角全部进序列,token 数量大,推理延迟未报告;实时驾驶需要 10Hz+ 决策,2B 模型 + 完整 pipeline 自回归一次的延迟是否达标论文未给。</li><li>我们读出:消融只在 nuScenes 单一 benchmark,未验证跨数据集泛化(如 Waymo、Argoverse);nuScenes 2Hz 采样的特性可能让方法过拟合到低帧率场景。</li></ul><h2>可复现性</h2><ul><li><strong>code</strong>：https://vlaworld.github.io(项目页)</li><li><strong>weights</strong>：Qwen2-VL-2B 公开底座;VLA-World 自身权重开源情况未明确;nuScenes-GR-20K 数据集声明将发布</li><li><strong>sim_benchmark</strong>：nuScenes(ST-P3 + UniAD 协议,L2 误差 + collision rate + FID)</li><li><strong>real_eval</strong>：无实车部署,纯 nuScenes 离线评测</li></ul><div class="tags"><span class='tag'>autonomous driving</span> <span class='tag'>VLA world model</span> <span class='tag'>reflective reasoning</span> <span class='tag'>GRPO</span> <span class='tag'>multi-view generation</span> <span class='tag'>VQGAN</span> <span class='tag'>Qwen2-VL</span> <span class='tag'>nuScenes</span> <span class='tag'>trajectory planning</span> <span class='tag'>SJTU</span> <span class='tag'>Huawei</span></div></section><section class="tab-panel" id="architecture"><div class="arch-prose"><h1>VLA-World 架构详解</h1>
+
+<p>> 配套 <code>card.json</code>。先用 Mermaid 把想象+反思闭环、三阶段训练、GRPO 画清，再逐组件讲透。所有数字来自论文 Sec 4.1 + Table 1-4。</p>
+
+<h2>1. 总体范式：想象 + 反思闭环</h2>
+
+<pre class="code"><code>flowchart LR
+  subgraph Inputs
+    O[&quot;多视角观测 o_t&lt;br/&gt;(6 相机 + ego status)&quot;]
+    G[&quot;mission goal g&lt;br/&gt;(left/right/forward)&quot;]
+  end
+
+  subgraph Pipeline[&quot;VLA-World 五步 pipeline&quot;]
+    P[&quot;1. Perception&lt;br/&gt;检测 agent / 3D 位置 / 路肩距离&quot;]
+    SP[&quot;2. Short-term Prediction&lt;br/&gt;0.5s waypoint + direction&lt;br/&gt;(惯性+意图融合)&quot;]
+    VG[&quot;3. Visual Generation&lt;br/&gt;VQGAN 自回归出未来帧&lt;br/&gt;条件: o_t + τ̂_t+1&quot;]
+    TK[&quot;4. Think&lt;br/&gt;反思想象未来帧&lt;br/&gt;识别风险/安全裕度&quot;]
+    AP[&quot;5. Action &amp; Trajectory&lt;br/&gt;修正 3s 轨迹&lt;br/&gt;6 个 BEV waypoint&quot;]
+  end
+
+  O --&gt; P
+  G --&gt; SP
+  P --&gt; SP
+  SP --&gt; VG
+  VG --&gt; TK
+  TK --&gt; AP
+
+  SP -.短期轨迹引导.-&gt; VG
+  TK -.反思修正.-&gt; AP</code></pre>
+
+<p><strong>核心因式分解</strong>（p4 Eq. 2）：<code>p(τ, x_{t+1} | o, g) = p(τ|o,g) · p(x_{t+1}|o, τ_{t+1})</code>。纯 VLA 只关注左因子（policy），纯世界模型只关注右因子（imagination）。VLA-World 把两者接起来：先用短期轨迹 τ̂ 引导生成未来帧 x̂（imagination），再对 x̂ 做反思 f_ref(o, x̂, τ̂) 输出修正轨迹 τ̃。</p>
+
+<p><strong>为什么这样</strong>：短期预测未来帧天然编码丰富时空信息（ego motion + 周围 agent 行为），是反思的可靠依据。反思能修正直觉预测忽略的风险（如行人突然进入车道）。消融显示 w/o Reasoning L2 从 0.30 涨到 0.85（+0.55m），反思贡献最大。</p>
+
+<h2>2. 三阶段训练</h2>
+
+<pre class="code"><code>flowchart TB
+  S1[&quot;Stage 1: Visual Pretrain&lt;br/&gt;480k 图像-指令&lt;br/&gt;30 epochs, lr 5e-4&lt;br/&gt;激活多视角生成能力&lt;br/&gt;(扩展 FSDrive 只生前视)&quot;]
+  S1 --&gt; S2[&quot;Stage 2: Supervised Fine-Tuning&lt;br/&gt;nuScenes-GR-20K&lt;br/&gt;12 epochs, lr 1e-4&lt;br/&gt;全 pipeline 监督&lt;br/&gt;建因果链(概念知识)&quot;]
+  S2 --&gt; S3[&quot;Stage 3: Reinforcement Learning&lt;br/&gt;GRPO, 20K, 1 epoch, lr 1e-6&lt;br/&gt;8 候选/prompt&lt;br/&gt;5 个 rule-based reward&lt;br/&gt;(推理知识)&quot;]
+  S3 --&gt; Final[&quot;VLA-World&lt;br/&gt;(想象+反思+规划)&quot;]</code></pre>
+
+<p><strong>三阶段对应三种知识</strong>（p1 Figure 1）：</p>
+<ul><li>Stage1 生成知识（cold start）：让模型学会理解驾驶世界，能生成未来帧。</li></ul>
+<li>Stage2 概念知识（SFT）：用 imitation learning 建 perception→prediction→generation→think→action 的因果链。</li>
+<li>Stage3 推理知识（RL）：GRPO 让模型在生成未来上交互探索，学会自我验证、丢弃不安全轨迹。</li>
+</ul>
+
+<p><strong>消融结论</strong>（p8 Table 4a）：SFT 比 RL 重要。w/o SFT L2 0.85（RL 没冷启动无法导航搜索空间），w/o RL L2 0.71（RL 只是精修）。SFT 是根基，RL 是提升。</p>
+
+<h2>3. 短期轨迹预测：物理动力学融合</h2>
+
+<pre class="code"><code>flowchart LR
+  H[&quot;历史轨迹 H&lt;br/&gt;{P_t-N ... P_t}&quot;]
+  H --&gt; FD[&quot;有限差分&lt;br/&gt;v_t = (P_t - P_t-1)/Δt&lt;br/&gt;a_hist = (v_t - v_t-1)/Δt&quot;]
+  G[&quot;mission goal g&lt;br/&gt;(left/right/forward)&quot;]
+  G --&gt; IG[&quot;意图加速度&lt;br/&gt;a_goal = (2/τ²)(ΔP_ideal - v_t·τ)&quot;]
+  FD --&gt; F[&quot;融合&lt;br/&gt;a_eff = (1-λ)·a_hist + λ·a_goal&lt;br/&gt;λ 自适应&quot;]
+  IG --&gt; F
+  F --&gt; Pred[&quot;短期预测 τ̂_t+1&lt;br/&gt;(0.5s waypoint + direction)&quot;]
+  Pred --&gt; Gen[&quot;条件生成未来帧 x̂_t+1&quot;]</code></pre>
+
+<p><strong>机制</strong>（Appendix A.2）：从历史轨迹差分估计速度 v_t 和历史加速度 a_hist（惯性项）；goal 映射到目标偏移算出意图加速度 a_goal（意图项）；线性融合 a_eff = (1-λ)·a_hist + λ·a_goal。</p>
+
+<p><strong>为什么</strong>：纯恒定加速度模型无法捕捉 goal 驱动的突然机动；纯意图模型不物理平滑。融合让短期预测既物理平滑又能响应导航指令，为生成未来帧提供物理可信条件。</p>
+
+<h2>4. GRPO：value-free RL + 5 个 rule-based reward</h2>
+
+<pre class="code"><code>flowchart TB
+  Prompt[&quot;输入 prompt o&quot;]
+  Prompt --&gt; Sample[&quot;当前策略 πθ 采样&lt;br/&gt;G=8 个候选 rollout&quot;]
+  Sample --&gt; R1[&quot;R_fmt: 格式&lt;br/&gt;(六个标签结构)&quot;]
+  Sample --&gt; R2[&quot;R_pred: 短期预测&lt;br/&gt;+ 长短期一致性&quot;]
+  Sample --&gt; R3[&quot;R_vis: 视觉 token 长度&lt;br/&gt;+ codebook 有效性&quot;]
+  Sample --&gt; R4[&quot;R_act: 动作 F1&quot;]
+  Sample --&gt; R5[&quot;R_traj: 轨迹精度&lt;br/&gt;+ 运动学一致性&quot;]
+  R1 &amp; R2 &amp; R3 &amp; R4 &amp; R5 --&gt; Rall[&quot;R_all = Σ λ_i·R_i&quot;]
+  Rall --&gt; Adv[&quot;组内归一化优势&lt;br/&gt;A_i = (r_i - μ)/σ&lt;br/&gt;(value-free, 不用 critic)&quot;]
+  Adv --&gt; Update[&quot;策略更新&lt;br/&gt;+ KL 项防偏离 SFT&quot;]</code></pre>
+
+<p><strong>机制</strong>（p6 Sec 3.5 + Appendix A.1）：GRPO 不用 critic（区别于 PPO），组内归一化优势 A_i = (r_i - μ)/σ 提供动态 baseline。5 个 rule-based reward 覆盖整条 pipeline（格式/短期预测/视觉约束/动作 F1/轨迹）。KL 项防止偏离 SFT checkpoint，避免 reward hacking。</p>
+
+<p><strong>为什么 rule-based</strong>：避免神经 reward model 的 reward hacking，且 rule-based 可解释、可控。让模型学会 Self-Verification，丢弃幻觉/不安全轨迹。</p>
+
+<h2>5. 输入/输出契约</h2>
+
+<table class="md-table">
+<thead><tr><th>方向</th><th>名称</th><th>类型</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>输入</td><td>多视角观测 o_t</td><td>image</td><td>nuScenes 6 相机视角</td></tr>
+<tr><td>输入</td><td>ego status S_t</td><td>vector</td><td>速度/加速度/yaw rate</td></tr>
+<tr><td>输入</td><td>mission goal g</td><td>discrete</td><td>left/right/forward</td></tr>
+<tr><td>输出</td><td>perception</td><td>text</td><td>检测 agent + 3D 位置 + 路肩距离</td></tr>
+<tr><td>输出</td><td>short-term prediction</td><td>text+trajectory</td><td>0.5s waypoint + direction</td></tr>
+<tr><td>输出</td><td>imagined future frame</td><td>image (VQGAN token)</td><td>任一视角 0.5s 后，128×192</td></tr>
+<tr><td>输出</td><td>reflective reasoning</td><td>text</td><td>重要 agent + 风险 + 安全裕度</td></tr>
+<tr><td>输出</td><td>final trajectory</td><td>trajectory</td><td>3s horizon，6 个 BEV waypoint</td></tr>
+</tbody></table>
+
+<h2>6. 数值 sense：模型到底多大</h2>
+
+<table class="md-table">
+<thead><tr><th>项</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>DiT 规格</td><td>Qwen2-VL-2B 主干（2B 参数 VLM transformer）；VQGAN tokenizer 离散 codebook</td><td>论文 Sec 4.1</td></tr>
+<tr><td>总参数</td><td>2B（Qwen2-VL-2B）</td><td>论文 Sec 4.1</td></tr>
+<tr><td>分辨率</td><td>生成图像 128×192（FSDrive 同款）；输入 6 相机 nuScenes 原生分辨率</td><td>论文 Table 2</td></tr>
+<tr><td>VAE</td><td>VQGAN（非 VAE）：图像离散化为 codebook token 序列；无连续 latent 压缩比概念</td><td>论文 Sec 3.3</td></tr>
+<tr><td>每帧 latent 维</td><td>VQGAN codebook token 序列，128×192 图像典型 ~256-1024 token（N 论文未明示）</td><td>推算</td></tr>
+<tr><td>Chunk</td><td>推理 step 0.5s；轨迹 horizon 3s = 6 个 waypoint；nuScenes 2Hz 采样</td><td>论文 Sec 3.1/3.4</td></tr>
+<tr><td>上下文</td><td>o_{1:t} 历史观测 + ego status + goal；具体历史长度未明示</td><td>论文 method</td></tr>
+<tr><td>动作</td><td>轨迹 waypoint（BEV 2D）；高层动作离散 manoeuvre（forward/left/right + keep/acc/dec/stop）</td><td>论文 Sec 3.1 + Table 3</td></tr>
+<tr><td>训练</td><td>Stage1: 30 epochs, AdamW lr 5e-4, per-device batch 16, 8×80GB, 480k。Stage2 SFT: 12 epochs, lr 1e-4, nuScenes-GR-20K。Stage3 GRPO: 1 epoch, lr 1e-6, global batch 16, 8 候选/prompt</td><td>论文 Sec 4.1</td></tr>
+</tbody></table>
+
+<p><strong>Qwen2-VL-2B 为什么够用</strong>：自动驾驶轨迹规划是 BEV 2D waypoint，不是机器人高维关节控制，2B VLM 的推理能力足够。且 VLA-World 继承 FSDrive 的对齐策略，Stage1 预训练已经激活了视觉生成能力。</p>
+
+<p><strong>VQGAN vs 连续 latent diffusion</strong>：VQGAN 离散 token 让视觉生成天然兼容 LLM 自回归（next-token prediction），不需要额外的 diffusion head。代价是生成质量受 codebook 限制（FID 9.8 vs diffusion 类 GEM 10.5 接近但未显著超越），且离散化损失高频细节。</p>
+
+<h2>7. 与其它 VLA/世界模型路线的根本区别</h2>
+
+<table class="md-table">
+<thead><tr><th>路线</th><th>想象</th><th>反思</th><th>底座</th><th>实时性</th></tr></thead>
+<tbody>
+<tr><td>纯 VLA（OmniDrive/ELM）</td><td>无</td><td>无</td><td>VLM</td><td>高</td></tr>
+<tr><td>纯世界模型（DriveDreamer/OccWorld）</td><td>有</td><td>无</td><td>视频 diffusion</td><td>中</td></tr>
+<tr><td>FSDrive</td><td>有（仅前视）</td><td>无</td><td>Qwen2-VL-2B</td><td>中</td></tr>
+<tr><td>DreamZero/BagelVLA（机器人 WAM）</td><td>有（连续 latent）</td><td>无显式</td><td>video diffusion</td><td>7Hz/1.23s</td></tr>
+<tr><td><strong>VLA-World</strong></td><td><strong>有（多视角 VQGAN）</strong></td><td><strong>有（GRPO 强化）</strong></td><td><strong>Qwen2-VL-2B</strong></td><td><strong>未报告</strong></td></tr>
+</tbody></table>
+
+<p>VLA-World 的独特定位：<strong>想象 + 反思闭环 + GRPO 强化推理链</strong>，牺牲了实时性报告，换来了驾驶安全的显式推理。是 FSDrive 的直接升级版，把"生成未来帧作 CoT"升级为"生成未来帧 + 反思修正 + RL 强化"。</p>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default" });
+</script>
+</section><section class="tab-panel" id="figures"><div class='figures-grid'>
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 1</span>
+            <span class='fig-page'>p.1</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>VLA-World 三阶段总览</h4>
+          <a href="figures/p01.png" target="_blank">
+            <img src="figures/p01.png" alt="VLA-World 三阶段总览" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Visual overview of VLA-World. The model learns through three progressive stages. We first activate visual generation by predicting future frames from multi-view inputs to learn generation knowledge. Then, we fine-tune the model to link perception, future generation, and planning to learn driving conceptual knowledge. Finally, we use reinforcement learning to refine decisions through interaction with generated futures to explore reasoning knowledge.</p>
+          <p class='whatitshows'>门面图。三阶段渐进:Stage1 视觉预训练(480k,冷启动理解世界,生成未来帧)→ Stage2 SFT(20k,链 perception/generation/planning 学概念知识)→ Stage3 RL(20k,GRPO 与生成未来交互探索推理知识)。右侧结果对比:Collision Rate 0.10 vs 其它 0.17/0.94/1.09,FID 9.8,双双最低。核心信息:想象+反思闭环,生成质量与规划安全双赢。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 2</span>
+            <span class='fig-page'>p.2</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>VLA vs World Model vs VLA-World 范式对比</h4>
+          <a href="figures/p02.png" target="_blank">
+            <img src="figures/p02.png" alt="VLA vs World Model vs VLA-World 范式对比" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Comparison of the (a) VLA, (b) World Model, and (c) the proposed VLA-World paradigm.</p>
+          <p class='whatitshows'>三种范式对照:(a) VLA = Image+Prompt→Action,直接映射;(b) World Model = Image+Prompt→Policy→Action,世界模型出 policy;(c) VLA-World = Image+Prompt→Perception→Short-term Prediction→Visual Generation→Think→Action,五步闭环。直观说明 VLA-World 把世界模型的想象和 VLA 的推理接起来,中间多了'生成未来帧+反思'两步。是全文核心思想的图示。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 3</span>
+            <span class='fig-page'>p.3</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>三阶段训练+推理 pipeline(最详细)</h4>
+          <a href="figures/p03.png" target="_blank">
+            <img src="figures/p03.png" alt="三阶段训练+推理 pipeline(最详细)" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：The illustration of the three-stage training and inference pipeline of VLA-World. Our training pipeline consists of three key stages: (a) visual pretrain to activate generation capability, (b) supervised fine-tuning to seed conceptual knowledge to the model, and (c) reinforcement learning with GRPO to explore higher performance like humans.</p>
+          <p class='whatitshows'>全文最该看的图。(a) Stage1 视觉生成激活:多视角输入→生成下一帧;(b) Stage2 SFT:全 pipeline 监督,输出带 <Perception><Prediction><Visual><Think><Action><Answer> 标签的结构化序列;(c) Stage3 GRPO:策略更新;(d) 推理:完整的 image-prompt→结构化自回归输出。展示训练和推理的序列结构一致性,以及六个标签的输出格式。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 4</span>
+            <span class='fig-page'>p.8</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>VLA-World vs FSDrive 生成+轨迹对比</h4>
+          <a href="figures/p08.png" target="_blank">
+            <img src="figures/p08.png" alt="VLA-World vs FSDrive 生成+轨迹对比" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Visualization of our VLA-World compared with the SOTA FSDrive. The top row shows the current scene, and the bottom row shows the generated scene for the next 0.5 seconds. The red trajectory is the model prediction, and the green trajectory is the ground truth.</p>
+          <p class='whatitshows'>VLA-World vs FSDrive 的生成未来帧和轨迹预测对比。上排当前场景,下排 0.5s 后生成场景。红轨迹预测,绿轨迹 GT。VLA-World 生成更清晰连贯(因显式条件于预测轨迹+方向),轨迹更准(因反思修正)。直观证明'想象+反思'比 FSDrive 直接回归更强。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 5</span>
+            <span class='fig-page'>p.15</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>三阶段数据样例</h4>
+          <a href="figures/p15.png" target="_blank">
+            <img src="figures/p15.png" alt="三阶段数据样例" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Data sample of (a) pretraining stage, (b) supervised fine-tuning, and (c) reinforcement learning.</p>
+          <p class='whatitshows'>三个阶段的数据格式样例:(a) 预训练是图像-指令对;(b) SFT 是带六个标签的结构化序列(<Perception>...</Perception> 等);(c) RL 是同 prompt 多候选采样。展示三阶段数据如何对应训练目标。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 6</span>
+            <span class='fig-page'>p.16</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>VLA-World vs FSDrive 生成质量补充</h4>
+          <a href="figures/p16.png" target="_blank">
+            <img src="figures/p16.png" alt="VLA-World vs FSDrive 生成质量补充" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Comparison between our VLA-World and the state-of-the-art FSDrive on generating the future frame at next 0.5 seconds.</p>
+          <p class='whatitshows'>Figure 4 的补充,更多场景下 VLA-World vs FSDrive 的 0.5s 未来帧生成对比。进一步证明 VLA-World 在多视角生成上的优势(多视角一致性来自 Stage1 显式约束)。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 7</span>
+            <span class='fig-page'>p.17</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>3s 轨迹预测对比</h4>
+          <a href="figures/p17.png" target="_blank">
+            <img src="figures/p17.png" alt="3s 轨迹预测对比" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Comparison of 3-second future trajectory predictions generated by our VLA-World and the state-of-the-art FSDrive.</p>
+          <p class='whatitshows'>VLA-World vs FSDrive 的 3s 轨迹预测可视化。展示长程 horizon(3s)上 VLA-World 因反思修正减少漂移,传统 VLA 在 3s 累积误差大。对应 Table 1 的 3s L2 优势(VLA-World 0.45 vs FSDrive 0.46,带 ego-state 版 0.45 vs 0.46;collision 0.18 vs 0.21)。</p>
+        </div>
+        
+</div></section><section class="tab-panel" id="podcast">
+<div class="audio-player">
+  <h3>🎧 音频版</h3>
+  <audio controls preload="metadata" style="width:100%;max-width:560px;">
+    <source src="audio/podcast.mp3" type="audio/mpeg">
+    你的浏览器不支持 audio 元素。<a href="audio/podcast.mp3">下载 MP3</a>
+  </audio>
+  <p class="dur">时长 16:38 · Edge TTS</p>
+</div>
+<div class="podcast-prose"><h1>VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving</h1>
+
+<p>2026-04-10，Shanghai Jiao Tong University (MoE Key Lab of AI, AI Institute) 的 Guoqing Wang 等人发布的论文，标题是 VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving。</p>
+
+<h2>开场：这篇论文真正要解决什么</h2>
+
+<p>这篇论文要解决自动驾驶里一个非常结构性的矛盾：<strong>VLA 直接从观测出动作，缺前瞻；世界模型能生成未来但只能"模拟"不能"推理评估"想象出来的未来。两边各有半截能力，合不到一起。</strong></p>
+
+<p>为什么合不到一起？VLA 方法像 OmniDrive、ELM 这些，直接把观测映射到轨迹，缺对其它动态 agent 的时空建模——它不知道周围的车人会怎么动。世界模型像 DriveDreamer、OccWorld 这些，能生成未来视频，但它只是"模拟"——它能想象未来长什么样，却不会评估这个未来安不安全、该不该那样走。</p>
+
+<p>FSDrive 算是第一个试着把两边接起来的：它用 Qwen2-VL 生成未来帧作为思维链的中间步。但它有两个问题：只生成前视，左转右转场景没法想象；而且它生成完未来帧就直接回归 waypoint，不对那个未来做反思评估。</p>
+
+<p>VLA-World 的命题是：能不能让模型<strong>先想象未来，再对自己想象出来的未来做反思，然后修正轨迹</strong>？就像人开车——直觉想象下一步，发现行人突然进车道，立刻反思"如果继续走会撞"，然后修正。它走通了这条路。</p>
+
+<h2>它的输入和输出到底是什么</h2>
+
+<p>你先在脑子里建一个五步 pipeline 的图。</p>
+
+<p>输入有三路：<strong>多视角观测</strong>，nuScenes 的 6 个相机视角，加上自车的 CAN 信号（速度、加速度、yaw rate）；<strong>导航指令</strong>，就是 left、right、forward 这种高层目标。</p>
+
+<p>输出是一个完整的五步结构化序列。第一步是<strong>感知结果</strong>，检测周围动态 agent、3D 位置、路肩距离、可行驶区域，是个结构化的场景描述。第二步是<strong>短期预测</strong>，下 0.5 秒的 waypoint 和行驶方向。第三步是<strong>想象未来帧</strong>，用 VQGAN 自回归生成下一帧的视觉 token 序列，可以指定任一视角。第四步是<strong>反思</strong>，对想象出来的未来帧做推理，识别重要 agent 和潜在风险。第五步是<strong>最终轨迹</strong>，修正后的 3 秒 horizon、0.5 秒间隔、6 个 BEV waypoint。</p>
+
+<p>这五步走的是同一个 Qwen2-VL-2B 主干，纯自回归 next-token prediction。</p>
+
+<h3>输入到底怎么拼成一条序列</h3>
+
+<p>光说五步还不够具体，我把它拆成一条显式的拼接序列。</p>
+
+<p>序列大致长这样：开头 <code>&lt;bos_obs&gt;</code> 包 6 个相机视角加 ego status，经 Qwen2-VL 编码，<code>&lt;eos_obs&gt;</code>。然后 <code>&lt;bos_goal&gt;</code> 包导航指令，<code>&lt;eos_goal&gt;</code>。接着 <code>&lt;bos_perception&gt;</code> 包感知文本——检测到的 agent、3D 位置、路肩距离，<code>&lt;eos_perception&gt;</code>。再 <code>&lt;bos_prediction&gt;</code> 包 0.5 秒 waypoint 加方向，<code>&lt;eos_prediction&gt;</code>。然后 <code>&lt;bos_visual&gt;</code> 包 VQGAN 生成的未来帧视觉 token 序列，<code>&lt;eos_visual&gt;</code>。接着 <code>&lt;bos_think&gt;</code> 包反思文本，<code>&lt;eos_think&gt;</code>。最后 <code>&lt;bos_action&gt;</code> 包高层动作，<code>&lt;bos_answer&gt;</code> 包 3 秒轨迹 waypoint 列表。</p>
+
+<p>这里有三个坑，听别的统一模型论文你也会反复遇到，必须分清。</p>
+
+<p><strong>第一，所有模态都是自回归 token 序列拼接，包括视觉未来帧。</strong> 这点和 DreamZero、Motus 完全不同。DreamZero 的语言是 cross-attention 注入，视觉未来是连续 latent diffusion。Motus 走 MoT 共享自注意力。但 VLA-World 走纯 LLM 自回归范式——所有东西都是 token，包括视觉未来帧。视觉未来帧是用 VQGAN 离散化成 codebook token，然后像生成文字一样 next-token prediction 出来。这是它最根本的架构选择。</p>
+
+<p><strong>第二，多视角在序列层拼接，6 个视角的 token 都在序列里，而且生成时可指定任一视角。</strong> 这点是对 FSDrive 的关键扩展。FSDrive 只生成前视，左转右转场景没法想象。VLA-World 在 Stage1 预训练时显式约束多视角一致性，所以推理时可以按预测方向请求对应视角——左转请求左视，右转请求右视，想象更贴合驾驶意图。</p>
+
+<p><strong>第三，训练和推理时这条序列结构是一致的，但三阶段侧重点不同。</strong> Stage1 只激活视觉生成，序列只到 <code>&lt;eos_visual&gt;</code>；Stage2 SFT 全 pipeline 监督，六个标签都有；Stage3 RL 用 GRPO 对完整输出采样打分。推理时是完整 pipeline 一次自回归出全部六段。</p>
+
+<p>记住这条序列和这三个坑，后面听别的 cascaded WAM 你会反复用到。</p>
+
+<h2>架构：Qwen2-VL-2B 加 VQGAN，纯自回归</h2>
+
+<p>主干是 Qwen2-VL-2B，一个 2B 参数的多模态 LLM。VLA-World 初始化时继承了 FSDrive 的对齐策略。视觉生成用的是 VQGAN——把图像离散化成 codebook token 序列，这样视觉生成就天然兼容 LLM 的自回归范式，不需要额外的 diffusion head。</p>
+
+<p>为什么用这么小的 2B 模型？因为自动驾驶的轨迹规划是 BEV 2D waypoint，不是机器人那种高维关节控制，2B 的推理能力够用。而且 Stage1 预训练已经激活了视觉生成能力，底子打好了。</p>
+
+<p>为什么用 VQGAN 离散 token 而不是连续 latent diffusion？因为离散 token 让视觉生成天然兼容 LLM 自回归，一套主干搞定所有模态。代价是生成质量受 codebook 限制——它的 FID 是 9.8，只比 diffusion 类的 GEM 10.5 略好，没有显著超越。而且离散化会损失高频细节，对交通灯颜色这种安全关键信息可能不利。这是个权衡。</p>
+
+<h2>核心机制：想象 + 反思闭环</h2>
+
+<p>这是 VLA-World 最关键的设计，单独讲。</p>
+
+<p>它的因式分解是这样的：p(轨迹, 未来帧 | 观测, 目标) = p(轨迹 | 观测, 目标) · p(未来帧 | 观测, 短期轨迹)。纯 VLA 只关注左因子，直接出轨迹；纯世界模型只关注右因子，生成未来。VLA-World 把两者接起来：先用短期轨迹 τ̂ 引导生成未来帧 x̂，这是想象；再对 x̂ 做反思推理 f_ref，输出修正轨迹 τ̃。</p>
+
+<p>关键洞察是：短期预测的未来帧天然编码了丰富的时空信息——既包括自车运动，也包括周围 agent 的行为。所以这个想象出来的未来帧，是反思的可靠依据。反思能修正直觉预测忽略的风险，比如行人突然进入车道。</p>
+
+<p>消融实验很有说服力。去掉反思模块，L2 误差从 0.30 涨到 0.85，整整涨了 0.55 米。去掉感知模块涨 0.45，去掉生成模块涨 0.38。<strong>反思的贡献最大</strong>，比生成本身还大。这说明"对想象未来做推理"比"生成未来"更重要——这是 VLA-World 最有力的论断。</p>
+
+<h2>给你一个数值 sense：这套模型到底多大</h2>
+
+<p>光说 2B 没感觉，我把维度念细一点。</p>
+
+<p>主干是 Qwen2-VL-2B，2B 参数的标准 VLM transformer。VQGAN tokenizer 把图像离散化成 codebook token 序列，每个 token 是 codebook 的一个 entry。生成图像分辨率是 128×192，和 FSDrive 同款。这个分辨率其实不高——实际驾驶摄像头都是 1080P 以上，128×192 能不能支持远距离行人的精细识别是个问题，论文没讨论。</p>
+
+<p>每帧的 token 数论文没明示，但 128×192 图像用 VQGAN 典型是几百到上千个 token。6 个视角全部进序列，token 数量很大。</p>
+
+<p>时间维度：推理步长 0.5 秒，轨迹 horizon 是 3 秒，0.5 秒间隔，共 6 个 BEV waypoint。nuScenes 是 2Hz 采样。注意这个 2Hz 帧率对快速动态场景——比如突然切入——响应可能滞后，这是它的一个局限。</p>
+
+<p>训练规模：Stage1 预训练 30 个 epoch，AdamW 学习率 5e-4，per-device batch 16，8 张 80GB GPU，480k 图像-指令对。Stage2 SFT 12 个 epoch，学习率 1e-4，用 nuScenes-GR-20K 这个自建数据集。Stage3 GRPO 1 个 epoch，学习率 1e-6，global batch 16，每个 prompt 采样 8 个候选。三阶段都在 8 张 80GB GPU 上。</p>
+
+<p>记住这套数字：2B Qwen2-VL、VQGAN 离散 token、128×192 生成、0.5s 步长、3s horizon 6 个 waypoint、三阶段训练。这是个中等规模的训练，比 DreamZero 的 14B、BagelVLA 的 16B 都小很多。</p>
+
+<h2>三阶段训练：生成知识 → 概念知识 → 推理知识</h2>
+
+<p>VLA-World 的训练不是一锅炖，是分三阶段层层叠加，对应三种知识。</p>
+
+<p><strong>Stage1 视觉预训练</strong>，480k 图像-指令，30 个 epoch。目标是冷启动——让模型学会理解驾驶世界，能生成未来帧。这阶段只激活视觉生成能力，序列只到 <code>&lt;eos_visual&gt;</code>。关键是它显式约束多视角一致性，这是对 FSDrive 只生前视的扩展。</p>
+
+<p><strong>Stage2 监督微调</strong>，nuScenes-GR-20K 这个自建数据集，12 个 epoch。用 imitation learning 建 perception→prediction→generation→think→action 的完整因果链。这阶段全 pipeline 监督，六个标签都有。这是建概念知识的阶段。</p>
+
+<p><strong>Stage3 强化学习</strong>，GRPO，20K，1 个 epoch，每个 prompt 采样 8 个候选。让模型在生成未来上交互探索，学会自我验证、丢弃不安全轨迹。这是探索推理知识的阶段。</p>
+
+<p>消融有个重要结论：<strong>SFT 比 RL 重要</strong>。去掉 SFT 的 L2 是 0.85，去掉 RL 的 L2 是 0.71。RL 没有 SFT 冷启动就无法导航大搜索空间，SFT 建因果链是根基，RL 只是精修。这个结论对其它想用 GRPO 强化 VLA 的工作有参考价值——冷启动监督不能省。</p>
+
+<h2>GRPO：value-free RL 加 5 个 rule-based reward</h2>
+
+<p>Stage3 用的 GRPO 是个值得讲的细节。</p>
+
+<p>它不用 critic，区别于 PPO。机制是：对每个 prompt 采样 G=8 个候选 rollout，用 5 个 rule-based reward 打分，然后组内归一化算优势 A_i = (r_i - μ)/σ。这个组内归一化提供动态 baseline，减少内存开销。</p>
+
+<p>5 个 reward 覆盖整条 pipeline：R_fmt 管格式（六个标签结构），R_pred 管短期预测加长短期一致性，R_vis 管视觉 token 长度和 codebook 有效性，R_act 用 F1 评动作，R_traj 管轨迹精度和运动学一致性。加权组合成 R_all。</p>
+
+<p>为什么用 rule-based 而不是神经 reward model？为了避免 reward hacking，而且 rule-based 可解释、可控。KL 项防止偏离 SFT checkpoint。让模型学会 Self-Verification，丢弃幻觉和不安全轨迹。</p>
+
+<h2>关键结果：规划安全和生成质量双赢</h2>
+
+<p>我挑几个有对照的数字。</p>
+
+<p><strong>轨迹规划</strong>，nuScenes ST-P3 协议带 ego-state：VLA-World 平均 L2 误差 0.26 米，FSDrive 是 0.28，OmniDrive 是 0.33，EMMA 是 0.32。Collision rate VLA-World 0.08%，FSDrive 0.10%，OmniDrive 0.30%。UniAD 协议下 VLA-World L2 0.42，FSDrive 0.45，OccWorld 1.40。两个协议下 VLA-World 都是最好。</p>
+
+<p><strong>未来帧生成</strong>，FID：VLA-World 9.8，FSDrive 10.1，GEM 10.5，Doe-1 15.9。虽然 VLA-World 的主要目标不是生成，但它甚至比专门的 diffusion 生成模型还好一点点。</p>
+
+<p><strong>动作预测 F1</strong>：forward 95.88%，left 74.22%，right 75.06%。基座 Qwen2-VL-2B 在 nuScenes 上微调后（Qwen2-VL-2B†）forward 92.60%，left 61.78%。VLA-World 全面胜出，转向动作提升最大——这说明它的多视角 goal-conditioned 生成对转向场景特别有用。</p>
+
+<p><strong>3 秒长程</strong>：VLA-World 在 3s horizon 上优势最明显，因为传统 VLA 在 3s 累积误差大，VLA-World 靠反思修正减少漂移。</p>
+
+<h2>一个最值得记住的 insight</h2>
+
+<p>论文里有个消融结论，我建议你重点记：<strong>反思模块的贡献最大，比生成模块还大。</strong></p>
+
+<p>去掉反思，L2 从 0.30 涨到 0.85，涨了 0.55 米。去掉生成，只涨 0.38。去掉感知，涨 0.45。反思 > 感知 > 生成。</p>
+
+<p>这说明什么？说明 VLA-World 这套架构的真正价值不在"能生成未来帧"，而在"能对生成的未来做推理评估"。生成只是手段，反思才是目的。这给"想象+反思"这条路线一个非常明确的指引：改进反思模块的收益会比改进生成模块更大。这是个很重要的诊断。</p>
+
+<h2>局限：别替它过度外推</h2>
+
+<p>论文没有显式列 Limitations 章节，这是个小问题。以下是我们读出的几个局限。</p>
+
+<p>第一，生成分辨率只有 128×192，远低于实际驾驶需求。实际驾驶摄像头都是 1080P 以上，128×192 这种低分辨率未来帧能不能支持远距离行人的精细识别，论文没讨论。这是个安全相关的隐患。</p>
+
+<p>第二，短期预测只有 0.5 秒，长程轨迹只有 3 秒。高速公路场景 3 秒 horizon 可能不够。而且 0.5 秒生成一帧，相当于 2Hz 帧率，对快速动态场景——比如突然切入——响应可能滞后。</p>
+
+<p>第三，GRPO 的 5 个 reward 都是 rule-based，设计依赖人工先验。reward 之间的权重 λ 论文没给具体值，调参空间大。复杂城市场景——施工区、非标准车道——rule-based reward 是否够用没讨论。</p>
+
+<p>第四，VQGAN 离散视觉 token 虽然兼容 LLM 自回归，但生成质量受 codebook 限制。FID 9.8 只比 GEM 10.5 略好，没有显著超越。而且离散化损失高频细节，对交通灯颜色这种安全关键信息可能不利。</p>
+
+<p>第五，6 个视角全部进序列，token 数量大，但论文没报告推理延迟。实时驾驶需要 10Hz 以上决策，2B 模型加完整 pipeline 自回归一次的延迟是否达标，论文没给。这是部署的关键问题。</p>
+
+<p>第六，消融只在 nuScenes 单一 benchmark 上做，没验证跨数据集泛化——比如 Waymo、Argoverse。nuScenes 是 2Hz 采样的特性，可能让方法过拟合到低帧率场景。</p>
+
+<p>所以 VLA-World 是"想象+反思"路线在驾驶场景的一个强证据，但不是终点。它证明了反思比生成更重要，但实时性、分辨率、跨数据集泛化都还有空间。它和机器人 WAM 形成一个有意思的对照：机器人 WAM 重端到端实时控制，VLA-World 重显式反思推理，两条路都还没走到工业部署。</p>
+
+<h2>一句话收束</h2>
+
+<p>VLA-World 把自动驾驶的 VLA 和世界模型合并：用 Qwen2-VL-2B 加 VQGAN 自回归生成未来帧，再对这个想象出来的未来做反思修正轨迹，三阶段训练含 GRPO 强化推理链。它最有力的论证是消融显示"反思模块贡献最大、比生成还大"——这把"想象+反思"路线的改进重心精确定位到了反思层。</p>
+</div></section>
+</main>
+<div class="footer">generated by paper-podcast skill · card.json 是真相源，其它文件是其视图</div>
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+</script>
+</body>
+</html>

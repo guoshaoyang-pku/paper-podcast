@@ -1,0 +1,32 @@
+# TTS provider configuration.
+# Copy to project root as tts_config.yaml. Override per-provider settings here.
+# API keys go in .env or environment, NOT in this file.
+
+edge:
+  voice: zh-CN-YunyangNeural   # 男声新闻播报风。其它: zh-CN-YunxiNeural(年轻男) / zh-CN-XiaoxiaoNeural(女声温和)
+  rate: "+8%"                   # 语速。+0% 标准, -5% 慢一点更清楚
+  gap: 0.35                     # 段间静音秒数
+  concurrency: 6                # 并发请求数
+
+openai:
+  voice: alloy                  # alloy/echo/fable/onyx/nova/shimmer/coral/sage
+  rate: "+8%"
+  gap: 0.35
+  concurrency: 4
+  instructions: "用自然中文技术口播风格朗读，语速中等偏快，避免棒读，像在给同事讲一篇论文。"
+  # model 默认 gpt-4o-mini-tts, 可用 OPENAI_TTS_MODEL 环境变量覆盖
+
+elevenlabs:
+  voice: ""                     # voice_id, 从 elevenlabs dashboard 获取
+  rate: "+0%"
+  gap: 0.4
+  concurrency: 3
+  # model 默认 eleven_multilingual_v2, 用 ELEVENLABS_MODEL_ID 覆盖
+
+f5:
+  voice: ""                     # 不用, F5 用 ref_audio 克隆
+  rate: "+0%"
+  gap: 0.4
+  concurrency: 1                # 本地推理, 串行
+  ref_audio: ""                 # 参考音频路径, 5-10s 干净人声
+  ref_text: ""                  # 参考音频对应的文本

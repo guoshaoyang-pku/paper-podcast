@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Do World Action Models Generalize Better than VLAs? A Robustness Study</title>
+<style>
+:root {
+  --bg:#fafbfa; --paper:#fff; --ink:#17201c; --muted:#65706b;
+  --faint:#8b9690; --line:#dfe6e2; --accent:#0f766e; --accent2:#8a5a00;
+  --soft:#eaf5f2; --warn:#fff7e6; --danger:#9f2f2f; --dark:#111614;
+  --code-bg:#1e2622; --code-fg:#e8f1ee;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  line-height:1.7; }
+header.top { background:var(--dark); color:#e8f1ee; padding:28px 40px; }
+header.top .back-home { display:inline-block; color:#5eead4; text-decoration:none;
+  font-size:14px; font-weight:600; margin-bottom:14px; }
+header.top .back-home:hover { text-decoration:underline; }
+header.top h1 { margin:0 0 8px; font-size:26px; line-height:1.3; }
+header.top .meta { color:#9fb3ac; font-size:14px; }
+header.top .meta a { color:#5eead4; }
+header.top .links { margin-top:14px; display:flex; gap:18px; flex-wrap:wrap; }
+header.top .links a { color:#5eead4; text-decoration:none; font-size:14px;
+  border:1px solid #2a3934; padding:6px 12px; border-radius:6px; }
+header.top .links a:hover { background:#1e2622; }
+nav.tabs { background:var(--paper); border-bottom:1px solid var(--line);
+  padding:0 40px; position:sticky; top:0; z-index:10; display:flex; gap:4px; }
+nav.tabs button { background:none; border:none; border-bottom:3px solid transparent;
+  padding:16px 18px; font-size:15px; color:var(--muted); cursor:pointer; font-weight:600; }
+nav.tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+main { max-width:1100px; margin:0 auto; padding:32px 40px; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+h2 { border-bottom:2px solid var(--line); padding-bottom:8px; margin-top:36px; }
+h3 { margin-top:28px; }
+h4 { margin-top:20px; color:var(--accent); }
+table.md-table { border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }
+table.md-table th, table.md-table td { border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+table.md-table th { background:var(--soft); color:var(--accent); font-weight:700; }
+table.md-table.numerical td:first-child { font-weight:600; width:140px; color:var(--muted); }
+table.md-table.results td:nth-child(2) { color:var(--accent); }
+pre.code { background:var(--code-bg); color:var(--code-fg); padding:16px 18px;
+  border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.55;
+  font-family:"SF Mono",Menlo,Consolas,monospace; }
+pre.code.protocol { border-left:4px solid var(--accent); }
+.protocol-explain { margin-top:12px; }
+.protocol-explain .proto-item { margin:6px 0; padding-left:14px; border-left:2px solid var(--line); }
+.protocol-explain .proto-note { color:var(--muted); font-size:14px; }
+.figures-grid { display:grid; grid-template-columns:1fr; gap:28px; margin-top:20px; }
+.figure-card { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:20px; }
+.figure-card.badge-key { border-left:4px solid var(--accent); }
+.figure-card.badge-supportive { border-left:4px solid var(--faint); }
+.figure-head { display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+.fig-id { font-weight:700; color:var(--accent); }
+.fig-page { color:var(--muted); }
+.badge { padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; text-transform:uppercase; }
+.badge-key { background:var(--soft); color:var(--accent); }
+.badge-supportive { background:#f0f2f1; color:var(--muted); }
+.figure-card img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:6px; margin:10px 0; }
+.figure-card .caption { color:var(--muted); font-size:13px; }
+.figure-card .whatitshows { margin-top:10px; }
+.arch-prose { max-width:none; }
+.arch-prose pre.code { margin:16px 0; }
+.podcast-prose { max-width:780px; }
+.podcast-prose h2 { color:var(--accent); }
+.podcast-prose pre.code { background:#fff; color:var(--ink); border:1px solid var(--line); }
+.audio-player { background:var(--soft); border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; }
+.audio-player h3 { margin:0 0 12px; color:var(--accent); }
+.audio-player audio { display:block; }
+.audio-player .dur { margin:8px 0 0; color:var(--muted); font-size:13px; }
+ul.insights li { margin:8px 0; }
+ul.limitations li { color:var(--muted); }
+.footer { text-align:center; color:var(--faint); padding:40px 20px; font-size:13px; }
+@media (max-width:780px) {
+  main { padding:20px; }
+  header.top { padding:20px; }
+  nav.tabs { padding:0 12px; overflow-x:auto; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back-home" href="../index.html" title="返回首页">← Home</a>
+  <h1>Do World Action Models Generalize Better than VLAs? A Robustness Study</h1>
+  <div class="meta">
+    Zhanguang Zhang、Zhiyuan Li、Behnam Rahmati et al. · Huawei Technologies · University of Toronto · 2026-04-30 · arXiv:2603.22078
+  </div>
+  <div class="links">
+    <a href="source.pdf" target="_blank">📄 source.pdf</a>    <a href="RoboTwin 2.0-Plus benchmark 协议公开(论文 Appendix A);各模型用官方 checkpoint" target="_blank">🔗 code</a>    <a href="../../SCHEMA.md" target="_blank">📋 schema</a>  </div>
+</header>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="architecture">Architecture</button>
+  <button class="tab-btn" data-tab="figures">Figures</button>
+  <button class="tab-btn" data-tab="podcast">Podcast</button>
+</nav>
+<main>
+<section class="tab-panel active" id="overview"><p class='one-liner'>在 LIBERO-Plus 和自建 RoboTwin 2.0-Plus 两个扰动基准上系统对比 VLA/WAM/混合三类策略,发现 WAM 在视觉扰动(噪声/光照/布局)上更鲁棒,但相机视角和机器人初始状态仍是硬伤;推理比 π0.5 慢至少 4.8 倍是 WAM 部署的主要障碍。</p><h2>问题</h2><p><strong>要解决什么</strong>：WAM(用视频生成模型做 policy)被宣称因继承视频预训练的时空先验而比 VLA 更鲁棒,但缺系统对照。作者要在统一扰动协议下,把 SOTA VLA(π0/π0.5/OpenVLA-OFT/X-VLA 等)、混合方法(MOTUS/VLA-JEPA)、WAM(LingBot-VA/Cosmos-Policy/GE-Act/Fast-WAM)放一起比,回答:WAM 真的比 VLA 泛化更好吗?鲁棒性来自视频先验还是数据多样性?代价是什么?</p><p><strong>为什么 prior work 不够</strong>：之前的 WAM 论文(LingBot-VA/Cosmos-Policy 等)各自报告优于 VLA,但评测协议不统一、扰动维度不全、且往往只对比自家选的 baseline。VLA 阵营的 π0.5 也宣称强泛化,但靠的是大量多样化机器人+web 数据加多种学习目标,而非视频先验。两条路线的'鲁棒性来源'被混在一起,无法判断到底是视频先验有效,还是数据多样性有效,还是两者必需。DreamZero 因 14B Wan2.1 backbone 太贵且推理需 15min warmup 被排除;GigaWorld-Policy 未开源。所以需要一个统一基准把这些变量拆开。</p><h2>输入 / 输出</h2><h3>输入</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>third-person camera</td><td>image</td><td>LIBERO-Plus: 1 张 256×256;RoboTwin 2.0-Plus: head 相机 320×240</td></tr>
+<tr><td>wrist camera(s)</td><td>image</td><td>LIBERO-Plus: 1 张;RoboTwin 2.0-Plus: 2 张(每臂一张),320×240</td></tr>
+<tr><td>language instruction</td><td>text</td><td>RoboTwin 2.0-Plus: 2500 条预生成变体(50 任务×50 变体),含 R1 干扰/R2 共识改写/R3 推理链</td></tr>
+<tr><td>proprioceptive state</td><td>vector</td><td>机器人关节状态;具体形式随模型(delta joint/absolute joint/delta EEF 等,见 Appendix Table)</td></tr>
+</tbody></table>
+<h3>输出</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>action chunk</td><td>continuous</td><td>chunk size 随模型:π0.5=50, X-VLA=30, Fast-WAM/GE-Act/Cosmos/MOTUS=16, LingBot-VA(RW)=32, LingBot-VA(RT)=32</td></tr>
+</tbody></table>
+<p><strong>控制频率</strong>：各模型原生频率;评测关注 success rate 和推理延迟,不强制统一频率</p>
+<h3>输入拼接 protocol</h3>
+<pre class="code protocol"><code>本研究不提出新 protocol,而是评测既有 VLA/WAM 的 protocol。各家族差异:
+【VLA 家族】(π0.5/OpenVLA-OFT/X-VLA):&lt;bos_vision&gt;[img_3rd ⊕ img_wrist]&lt;eos_vision&gt;&lt;bos_lang&gt;TokLLM(instruction)&lt;eos_lang&gt;&lt;bos_state&gt;proprio&lt;eos_state&gt;&lt;bos_action&gt;diffusion action expert → a1:H&lt;eos_action&gt;。语言通常 cross-attention 或 token 拼接,backbone 是 VLM(图像-文本预训练)。
+【WAM 家族】(LingBot-VA/Cosmos-Policy/GE-Act/Fast-WAM/DreamZero):&lt;bos_vision&gt;[img history]&lt;eos_vision&gt;&lt;bos_lang&gt;instruction&lt;eos_lang&gt;&lt;bos_state&gt;proprio&lt;eos_state&gt;&lt;bos_wam&gt;[video latent z_t, action latent a_t] → 视频扩散去噪 → (未来视觉状态 z_{t+1}, 动作 a)&lt;eos_wam&gt;。backbone 是视频生成模型(web 视频预训练)。
+【三个关键差异】:
+1. backbone 不同:VLA 用 VLM(静态图像-文本),WAM 用视频扩散(动态视频)。这决定了是否继承&#x27;时空先验&#x27;。
+2. 因果预测方向不同:①IDM 式(LingBot-VA/GE-Act)先预测未来视觉状态再条件化动作 p(h_{t+1}|h_t)·g(a|h_t,h_{t+1});②联合去噪(Cosmos-Policy/DreamZero/Fast-WAM)共享 timestep 联合预测 p(h_{t+1},a|h_t);③动作优先(GigaWorld-Policy)先预测动作再条件化视频。论文发现 IDM 式对训练数据多样性依赖更低,联合去噪式更依赖。
+3. 测试时是否生成视频:LingBot-VA/GE-Act/Cosmos 测试时必须生成未来视觉状态再解码动作(慢);Fast-WAM/GigaWorld-Policy 测试时可跳过视频生成直接出动作(快但仍比 π0.5 慢 3×)。</code></pre><h2>数据集</h2><table class='md-table'><thead><tr><th>数据</th><th>规模</th><th>备注</th></tr></thead><tbody><tr><td>LIBERO-Plus</td><td>单臂 7-DoF Franka</td><td>Fei et al. 2025 提出,7 类扰动;2 相机(1 第三视角+1 腕部)256×256;评测单臂灵巧性</td></tr><tr><td>RoboTwin 2.0-Plus(自建)</td><td>双臂 Aloha-Agilex, 50 任务</td><td>本文扩展;7 维度 21 子维度扰动;3 相机(head+2 腕部)320×240;评测双臂协调鲁棒性;每 config 50 episodes/task,8 configs/task(1 clean+7 扰动)</td></tr><tr><td>π0.5 RoboTwin finetune</td><td>27.5k 训练数据</td><td>JAX 实现,60k gradient steps,AdamW,cosine lr 2.5e-5→2.5e-6,batch 64,delta joint actions</td></tr><tr><td>评测模型集合</td><td>10+ 模型</td><td>VLA: π0/π0-FAST/π0.5/OpenVLA-OFT/UniVLA/RIPT-VLA/X-VLA/HoloBrain0-GD/ABot-M0;混合: MOTUS/VLA-JEPA;WAM: GE-Act/Cosmos-Policy/LingBot-VA/Fast-WAM</td></tr></tbody></table><h2>架构（摘要）</h2><h3>主干与结构</h3>
+<p><strong>backbone</strong>：N/A(对比研究,不提模型);评测的 WAM 用 Cosmos-Predict2/LTX-Video/Wan2.1/Wan2.2 视频扩散,VLA 用 PaliGemma/Qwen3-VL 等 VLM</p>
+<p><strong>参数</strong>：评测模型跨度:VLA 2-7B;WAM 1.5-14B(VPP 1.5B / GE-Act 2.2B / Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / DreamZero 14B)</p>
+<p><strong>类型</strong>：systematic comparison: VLA vs Hybrid(VLA+WM) vs WAM, across 7 perturbation dimensions</p>
+<h4>关键组件</h4><ul>
+<li>评测协议:7 维度×21 子维度扰动(Camera/Robot/Language/Light/Background/Noise/Layout),各维度独立激活隔离效果</li>
+<li>WAM 分类轴(Table 1):backbone / 是否 MOT / 是否 Pretrain Free / 是否 Causal Pred(动作条件化预测状态)/ 是否 AR Gen</li>
+<li>训练数据对照(Table 2):embodied pre-training vs post-training vs task-specific finetune 三阶段,拆开 web video/human ego/cross-embodiment/task data</li>
+<li>因果预测三式:IDM 式(LingBot-VA/GE-Act)/ 联合去噪(Cosmos/DreamZero/Fast-WAM)/ 动作优先(GigaWorld)</li>
+<li>推理延迟对照(Table 5):π0.5 63ms 基线,各 WAM 4.8×~83× 慢;denoising steps 是主因</li>
+</ul>
+<h4>为什么这样设计</h4><p>核心是要把'视频先验有效'和'数据多样性有效'两个混淆变量拆开。Fast-WAM 提供了一个天然实验:同架构同 backbone,RoboTwin 用 clean+domain-randomized 训(数据多样),LIBERO 用 clean only 训(数据单一)——结果 RoboTwin 上 72.7% 鲁棒、LIBERO 上崩到 51.5%。这隔离出'视频先验必要但不充分,数据多样性仍是关键杠杆'。同时对比 IDM 式 vs 联合去噪式发现:IDM 式因显式状态-动作因果耦合,对训练数据多样性依赖更低——这是架构选择对鲁棒性的影响。这两个发现是本研究最有价值的贡献。</p>
+<h4>数值 sense</h4>
+<table class='md-table numerical'><thead><tr><th>项</th><th>值</th></tr></thead><tbody>
+<tr><td>benchmarks</td><td>2 个:LIBERO-Plus(单臂 Franka,2 相机 256×256)+ RoboTwin 2.0-Plus(双臂 Aloha-Agilex,3 相机 320×240)</td></tr>
+<tr><td>tasks</td><td>RoboTwin 2.0-Plus: 50 双臂任务;LIBERO-Plus: 标准 LIBERO 任务集</td></tr>
+<tr><td>perturbation_dims</td><td>7 维度 21 子维度:Camera(C1/C3 active, C2 default off)/Robot(joint+gripper)/Language(R1/R2/R3)/Light(L1/L2/L3/L4)/Background(B1/B2)/Noise(N1-N5)/Layout(O1/O2)</td></tr>
+<tr><td>episodes_per_config</td><td>50 episodes/task/config;8 configs/task(1 clean + 7 扰动分支);每分支只激活一个维度隔离效果</td></tr>
+<tr><td>robot_perturbation</td><td>关节 Gaussian noise std=0.1 rad(clip ±0.225 rad);gripper 极端位置(0.05/0.95) p=0.25</td></tr>
+<tr><td>language_variants</td><td>2500 条预生成(50 任务×50 变体);R1 干扰~30%/R2 共识改写~50%/R3 推理链~20%</td></tr>
+<tr><td>model_params_span</td><td>VPP 1.5B / GE-Act 2.2B / Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / DreamZero 14B;VLA 多 2-7B</td></tr>
+<tr><td>action_chunk_sizes</td><td>π0.5=50 / X-VLA=30 / Fast-WAM=GE-Act=Cosmos=MOTUS=16 / LingBot-VA=32</td></tr>
+<tr><td>inference_latency</td><td>π0.5 63ms(基线) / X-VLA 195ms(3.1×) / Fast-WAM 190ms(3.0×) / GE-Act 300ms(4.8×) / Cosmos-Policy 390ms(6.2×) / LingBot-VA(RW) 480ms(7.6×) / MOTUS 1175ms(18.6×) / LingBot-VA(RT) 5230ms(83×)</td></tr>
+<tr><td>denoising_steps</td><td>GE-Act: 1 state + 10 action;Cosmos-Policy: 5+5;MOTUS: 10+10;LingBot-VA(RW): 3+5;LingBot-VA(RT): 25+50(state denoising 主导 runtime)</td></tr>
+</tbody></table><p>→ 详见 <strong>Architecture</strong> tab。</p><h2>关键结果</h2><h2>Insights</h2><ul class='insights'><li>WAM 不是万能鲁棒:它在噪声/光照/布局上强(视频先验帮忙),但在相机视角和机器人初始状态上和 VLA 一样弱(p9 Table 3)。视频先验对'视觉外观变化'有效,对'几何配置变化'无效——这是视频先验的边界(p12 conclusion)。</li><li>π0.5 85.7% 总分最高证明:VLA 不靠视频先验也能鲁棒,但代价是训练数据极其多样复杂(7 类数据混合)。WAM 鲁棒更省事(Cosmos-Policy 185 条轨迹无 embodied pre-training 就 82.2%)。两条路殊途同归到鲁棒,但 WAM 训练更简单——这是 WAM 的真正卖点,不是'VLA 做不到'(p10 RQ3)。</li><li>Fast-WAM 天然实验是最干净的因果论证:同架构同 backbone,只改训练数据多样性,鲁棒性差 21 点(72.7% vs 51.5%)。这把社区从'视频先验万能'的幻觉里拉回——视频先验必要但不充分,task-specific 训练数据多样性仍是关键杠杆(p10 RQ2)。</li><li>架构选择影响鲁棒性,不只是 backbone:IDM 式(LingBot-VA,显式状态-动作因果耦合)对训练数据多样性依赖低于联合去噪式(Fast-WAM)。这暗示显式因果建模提供额外架构先验——设计 WAM 时因果方向是重要考量(p10 RQ2)。</li><li>WAM 推理慢的根因是 state denoising,不是 action:GE-Act 1 state step 最快(300ms),LingBot-VA(RT) 25 state steps 最慢(5230ms)。Fast-WAM 跳过测试时 state 生成是最快 WAM(190ms),但数据单一时鲁棒性崩——速度和鲁棒性有 trade-off(p11 RQ4)。</li><li>评测协议的'独立激活'设计是本研究方法论亮点:每 config 只开一个扰动维度,其余 clean,能隔离每个维度效果。这比'全扰动混合'更能定位失败原因——但代价是低估了多扰动叠加时的交互效应(论文未做叠加评测)。</li></ul><h2>vs 同类工作</h2><ul class=''><li>vs 各 WAM 原论文(LingBot-VA/Cosmos-Policy/DreamZero):那些论文各自报告优于 VLA,但评测协议不统一、baseline 自选;本研究用统一 LIBERO-Plus/RoboTwin 2.0-Plus 协议把 10+ 模型放一起比,数字才可比。</li><li>vs LIBERO-Plus 原论文(Fei et al. 2025):LIBERO-Plus 只评 VLA,本研究扩展到 WAM 并自建 RoboTwin 2.0-Plus 双臂 benchmark,补了 WAM 在双臂协调鲁棒性上的评测空白。</li><li>vs DreamZero 论文:DreamZero 因 14B Wan2.1 太贵且推理需 15min warmup 被本研究排除——这本身是个发现:DreamZero 这种大 WAM 在 benchmark-scale 评测上不实际,暗示 WAM 路线要落地推理效率是硬约束。</li><li>vs 各 VLA scaling 论文(π0.5/OpenVLA-OFT):那些论文强调数据 scaling 提泛化,本研究把'数据多样性'和'视频先验'两个变量拆开,证明两者都能到鲁棒但代价不同——这是对 scaling 路线的补充视角。</li></ul><h2>局限</h2><ul class='limitations'><li>论文自承:DreamZero 和 GigaWorld-Policy 因 checkpoint 不开源/太贵被排除,评测集合不完整,最强 WAM 可能未参评(p8)。</li><li>论文自承:Fast-WAM 在 LIBERO 上用 clean only 训是'有意的自然实验',但两个 checkpoint 的 task 不同(RoboTwin 双臂 vs LIBERO 单臂),所以'数据多样性'和'task 类型'两个变量未完全隔离(p8)。</li><li>论文自承:WAM 推理慢是部署障碍,本研究只诊断未提出加速方案(p11 RQ4)。</li><li>我们读出:扰动评测是'独立激活'每维度,未做多扰动叠加评测——真实世界往往是多扰动同时发生,独立激活可能高估或低估实际鲁棒性。</li><li>我们读出:π0.5 在 RoboTwin 上是作者自训(JAX,60k steps),可能未达 π0.5 在 PI 原生训练的最优水平;π0.5 LIBERO-Plus 85.7% 是其论文数字,两个 setup 不完全可比。</li><li>我们读出:7 维度扰动里 Language 只测了指令改写,没测多语言/跨文化指令;Camera 只测了视角小扰动(±10°),没测极端视角变化——扰动空间还有扩展余地。</li><li>我们读出:所有评测都在仿真(LIBERO/RoboTwin 都是 sim),真机鲁棒性未验证;sim 里的'光照/噪声'和真机传感器噪声分布不同,结论外推到真机需谨慎。</li></ul><h2>可复现性</h2><ul><li><strong>code</strong>：RoboTwin 2.0-Plus benchmark 协议公开(论文 Appendix A);各模型用官方 checkpoint</li><li><strong>weights</strong>：评测的模型 checkpoint 大多公开;π0.5 RoboTwin 版是作者自训(JAX);DreamZero/GigaWorld-Policy 未开源</li><li><strong>sim_benchmark</strong>：LIBERO-Plus(公开)+ RoboTwin 2.0-Plus(自建,协议公开)</li><li><strong>real_eval</strong>：无(全仿真)</li></ul><div class="tags"><span class='tag'>WAM</span> <span class='tag'>VLA</span> <span class='tag'>robustness study</span> <span class='tag'>benchmark</span> <span class='tag'>LIBERO-Plus</span> <span class='tag'>RoboTwin</span> <span class='tag'>perturbation</span> <span class='tag'>video prior</span> <span class='tag'>Huawei</span> <span class='tag'>comparison</span></div></section><section class="tab-panel" id="architecture"><div class="arch-prose"><h1>WAM vs VLA 鲁棒性研究 — 架构详解</h1>
+
+<p>> 配套 <code>card.json</code>。本研究不提模型,而是评测既有 VLA/WAM 的鲁棒性。下面用 Mermaid 把评测框架、WAM 分类轴、Fast-WAM 天然实验三个核心结构画清,再用文字讲透。所有数字来自论文(页码/表号标注)。</p>
+
+<h2>1. 评测框架总览</h2>
+
+<pre class="code"><code>flowchart TB
+  subgraph Bench[&quot;两个互补 benchmark&quot;]
+    L[&quot;LIBERO-Plus&lt;br/&gt;单臂 7-DoF Franka&lt;br/&gt;2 相机 256×256&lt;br/&gt;7 类扰动(Fei et al.)&quot;]
+    R[&quot;RoboTwin 2.0-Plus(自建)&lt;br/&gt;双臂 Aloha-Agilex, 50 任务&lt;br/&gt;3 相机 320×240&lt;br/&gt;7 维度 21 子维度扰动&quot;]
+  end
+
+  subgraph Perturb[&quot;7 维度 21 子维度扰动(独立激活)&quot;]
+    P1[&quot;Camera (C1/C3)&quot;]
+    P2[&quot;Robot (joint+gripper)&quot;]
+    P3[&quot;Language (R1/R2/R3)&quot;]
+    P4[&quot;Light (L1/L2/L3/L4)&quot;]
+    P5[&quot;Background (B1/B2)&quot;]
+    P6[&quot;Noise (N1-N5)&quot;]
+    P7[&quot;Layout (O1/O2)&quot;]
+  end
+
+  subgraph Models[&quot;三类策略 10+ 模型&quot;]
+    VLA[&quot;VLA: π0/π0-FAST/π0.5/&lt;br/&gt;OpenVLA-OFT/UniVLA/RIPT-VLA/&lt;br/&gt;X-VLA/HoloBrain0-GD/ABot-M0&quot;]
+    HYB[&quot;Hybrid: MOTUS / VLA-JEPA&quot;]
+    WAM[&quot;WAM: GE-Act / Cosmos-Policy /&lt;br/&gt;LingBot-VA / Fast-WAM&lt;br/&gt;(DreamZero/GigaWorld 排除)&quot;]
+  end
+
+  Bench --&gt; Perturb
+  Perturb --&gt; Models
+  Models --&gt;|success rate + 推理延迟| Result{鲁棒性 + 速度对照}</code></pre>
+
+<p><strong>协议设计</strong>:每 config 只激活一个扰动维度,其余保持 clean,50 episodes/task/config,8 configs/task(1 clean + 7 扰动分支)。这隔离每个维度的效果,避免混淆。同协议同硬件让 10+ 模型数字可比。</p>
+
+<h2>2. WAM 分类轴(Table 1)</h2>
+
+<pre class="code"><code>flowchart LR
+  subgraph Axis[&quot;5 个分类轴&quot;]
+    A1[&quot;backbone&lt;br/&gt;SVD/LTX/Cosmos-Predict2/&lt;br/&gt;Wan2.1/Wan2.2&quot;]
+    A2[&quot;MOT?&lt;br/&gt;视频/动作分离 backbone&quot;]
+    A3[&quot;Pretrain Free?&lt;br/&gt;不需 task-agnostic&lt;br/&gt;embodied 预训练&quot;]
+    A4[&quot;Causal Pred 方向&lt;br/&gt;IDM / 联合 / 动作优先&quot;]
+    A5[&quot;AR Gen?&lt;br/&gt;自回归生成&quot;]
+  end
+
+  VPP[&quot;VPP 1.5B&lt;br/&gt;SVD&lt;br/&gt;no MOT, no PretrainFree,&lt;br/&gt;IDM, no AR&quot;]
+  GE[&quot;GE-Act 2.2B&lt;br/&gt;LTX&lt;br/&gt;MOT, no PF,&lt;br/&gt;no causal, AR&quot;]
+  COS[&quot;Cosmos-Policy 2B&lt;br/&gt;Cosmos-Predict2&lt;br/&gt;no MOT, PF,&lt;br/&gt;联合, no AR&quot;]
+  LIN[&quot;LingBot-VA 5.3B&lt;br/&gt;Wan2.2&lt;br/&gt;MOT?, no PF,&lt;br/&gt;IDM, AR&quot;]
+  DZ[&quot;DreamZero 14B&lt;br/&gt;Wan2.1&lt;br/&gt;no MOT, no PF,&lt;br/&gt;联合, AR&quot;]
+  GIG[&quot;GigaWorld-Policy &gt;5B&lt;br/&gt;Wan2.2&lt;br/&gt;no MOT, no PF,&lt;br/&gt;动作优先, no AR&quot;]
+  FW[&quot;Fast-WAM 6B&lt;br/&gt;Wan2.2&lt;br/&gt;MOT, PF,&lt;br/&gt;联合, no AR&quot;]</code></pre>
+
+<p><strong>关键差异</strong>:</p>
+<ul><li><strong>Pretrain Free</strong> 只有 Fast-WAM 是 ✓——它只用 task-specific 60h 数据无 embodied pre-training 就达 72.7%,证明视频 backbone 时空先验足够。</li></ul>
+<li><strong>Causal Pred 方向</strong> 三式:IDM 式(LingBot-VA/GE-Act 先预测状态再条件化动作)、联合去噪(Cosmos/DreamZero/Fast-WAM 共享 timestep)、动作优先(GigaWorld 先动作再条件化视频)。论文发现 IDM 式对训练数据多样性依赖更低。</li>
+<li><strong>测试时是否生成视频</strong>:LingBot-VA/GE-Act/Cosmos 必须生成未来视觉状态再解码动作(慢);Fast-WAM/GigaWorld 可跳过视频生成直接出动作(快)。</li>
+</ul>
+
+<h2>3. Fast-WAM 天然实验:隔离&quot;视频先验 vs 数据多样性&quot;</h2>
+
+<p>这是本研究最有价值的发现,值得单独画。</p>
+
+<pre class="code"><code>flowchart TB
+  subgraph Same[&quot;同架构同 backbone: Wan2.2-5B + Fast-WAM 设计&quot;]
+    RT[&quot;RoboTwin 2.0-Plus checkpoint&lt;br/&gt;训练: clean + domain-randomized 27.5k&lt;br/&gt;(数据多样)&quot;]
+    LB[&quot;LIBERO-Plus checkpoint&lt;br/&gt;训练: clean only&lt;br/&gt;(数据单一)&quot;]
+  end
+
+  RT --&gt; RT_orig[&quot;Original 91.2%&quot;]
+  RT --&gt; RT_pert[&quot;扰动平均 72.7%&quot;]
+  RT_orig -.-&gt;|降 18 点| RT_pert
+
+  LB --&gt; LB_orig[&quot;Original 97.6%&quot;]
+  LB --&gt; LB_pert[&quot;扰动平均 51.5%&quot;]
+  LB_orig -.-&gt;|降 46 点| LB_pert
+
+  RT_pert --&gt;|对比| LB_pert
+  LB_pert -.-&gt;|差 21 点| RT_pert</code></pre>
+
+<p><strong>结论</strong>:架构和 backbone 完全相同,唯一变量是训练数据多样性。RoboTwin(数据多样)只降 18 点;LIBERO(数据单一)降 46 点。<strong>视频先验必要但不充分,task-specific 训练数据多样性仍是关键杠杆</strong>。这把社区从"视频先验万能"的幻觉里拉回。</p>
+
+<h2>4. 三类策略的鲁棒性对照(RoboTwin 2.0-Plus 主结果)</h2>
+
+<table class="md-table">
+<thead><tr><th>类型</th><th>模型</th><th>Original</th><th>Camera</th><th>Robot</th><th>Lang</th><th>Light</th><th>BG</th><th>Noise</th><th>Layout</th><th>Total</th></tr></thead>
+<tbody>
+<tr><td>VLA</td><td>π0.5</td><td>78.4</td><td>45.6</td><td>27.6</td><td>74.4</td><td>49.6</td><td>71.7</td><td>64.9</td><td>56.8</td><td>58.6</td></tr>
+<tr><td>VLA</td><td>X-VLA</td><td>65.6</td><td>23.2</td><td>65.2</td><td>64.4</td><td>63.1</td><td>58.6</td><td>49.7</td><td>34.8</td><td>53.1</td></tr>
+<tr><td>Hybrid</td><td>MOTUS</td><td>87.0</td><td>21.6</td><td>85.0</td><td>83.2</td><td>84.6</td><td>84.4</td><td>43.1</td><td>82.8</td><td>71.5</td></tr>
+<tr><td>WAM</td><td>LingBot-VA</td><td><strong>92.1</strong></td><td>28.9</td><td>36.2</td><td>87.3</td><td><strong>89.0</strong></td><td><strong>91.3</strong></td><td><strong>80.9</strong></td><td><strong>87.9</strong></td><td><strong>74.2</strong></td></tr>
+<tr><td>WAM</td><td>Fast-WAM</td><td>91.2</td><td>30.4</td><td>53.2</td><td>86.7</td><td>88.8</td><td>90.0</td><td>76.4</td><td>83.2</td><td>72.7</td></tr>
+</tbody></table>
+
+<p><strong>读法</strong>:</p>
+<ul><li>LingBot-VA 总分第一(74.2%),在 Light/Background/Noise/Layout 视觉扰动上最强(80.9~91.3%)。</li></ul>
+<li>但 Camera(28.9%)和 Robot(36.2%)是所有方法的硬伤——视频先验对几何配置改变帮助有限。</li>
+<li>π0.5 总分 58.6% 垫底,Light 才 49.6%——VLA 在视觉扰动上确实弱,但 Robot(27.6%)和 LingBot-VA(36.2%)差距没那么大,说明几何扰动对两类都难。</li>
+<li>MOTUS(混合)Robot 85.0% 最强,因为 action 走单独 VLM expert 对初始状态更鲁棒。</li>
+</ul>
+
+<h2>5. LIBERO-Plus 结果(单臂,VLA 反而更强)</h2>
+
+<table class="md-table">
+<thead><tr><th>类型</th><th>模型</th><th>Original</th><th>Total</th></tr></thead>
+<tbody>
+<tr><td>VLA</td><td>π0.5</td><td>96.9</td><td><strong>85.7</strong></td></tr>
+<tr><td>VLA</td><td>X-VLA</td><td>98.1</td><td>71.4</td></tr>
+<tr><td>VLA</td><td>OpenVLA-OFT_m</td><td>97.6</td><td>67.9</td></tr>
+<tr><td>Hybrid</td><td>VLA-JEPA</td><td>97.2</td><td>77.9</td></tr>
+<tr><td>WAM</td><td>Cosmos-Policy</td><td>98.5</td><td><strong>82.2</strong></td></tr>
+<tr><td>WAM</td><td>GE-Act</td><td>94.4</td><td>80.3</td></tr>
+<tr><td>WAM</td><td>Fast-WAM(clean only)</td><td>97.6</td><td>51.5</td></tr>
+</tbody></table>
+
+<p><strong>关键反差</strong>:LIBERO-Plus 上 π0.5(85.7%)反而超 WAM。原因:π0.5 训练数据极其多样(7 类混合:web data/multi-env tabletop/cross-embodiment/mobile manipulation/high-level planning/verbal instruction),用数据多样性补偿了视频先验缺失。WAM 省数据(省训练复杂度)但 LIBERO 上数据单一时 Fast-WAM 崩到 51.5%。</p>
+
+<p><strong>两条路殊途同归到鲁棒</strong>:WAM 靠视频先验省数据,VLA 靠数据多样性补先验缺失——都能到鲁棒,代价不同。</p>
+
+<h2>6. 推理延迟拆解(Table 5)</h2>
+
+<table class="md-table">
+<thead><tr><th>模型</th><th>类型</th><th>Action chunk</th><th>推理延迟</th><th>vs π0.5</th><th>state steps</th><th>action steps</th></tr></thead>
+<tbody>
+<tr><td>π0.5</td><td>VLA</td><td>50</td><td>63 ms</td><td>1.0×</td><td>—</td><td>—</td></tr>
+<tr><td>X-VLA</td><td>VLA</td><td>30</td><td>195 ms</td><td>3.1×</td><td>—</td><td>—</td></tr>
+<tr><td>Fast-WAM</td><td>WAM</td><td>16</td><td>190 ms</td><td>3.0×</td><td>(跳过)</td><td>—</td></tr>
+<tr><td>GE-Act</td><td>WAM</td><td>36</td><td>300 ms</td><td>4.8×</td><td>1</td><td>10</td></tr>
+<tr><td>Cosmos-Policy</td><td>WAM</td><td>16</td><td>390 ms</td><td>6.2×</td><td>5</td><td>5</td></tr>
+<tr><td>LingBot-VA(RW)</td><td>WAM</td><td>32</td><td>480 ms</td><td>7.6×</td><td>3</td><td>5</td></tr>
+<tr><td>MOTUS</td><td>Hybrid</td><td>16</td><td>1175 ms</td><td>18.6×</td><td>10</td><td>10</td></tr>
+<tr><td>LingBot-VA(RT)</td><td>WAM</td><td>32</td><td>5230 ms</td><td>83×</td><td>25</td><td>50</td></tr>
+</tbody></table>
+
+<p><strong>发现</strong>:</p>
+<ul><li>WAM 全部至少 4.8× 慢于 π0.5(除 Fast-WAM 3.0×,但它跳过了 state 生成)。</li></ul>
+<li><strong>state denoising steps 主导 runtime</strong>:GE-Act 1 state step 最快(300ms),LingBot-VA(RT) 25 state steps 最慢(5230ms)。</li>
+<li>Fast-WAM 跳过测试时 state 生成是最快 WAM(190ms),但 LIBERO 数据单一时鲁棒性崩——速度和鲁棒性有 trade-off。</li>
+</ul>
+
+<h2>7. 评测协议数值 sense</h2>
+
+<table class="md-table">
+<thead><tr><th>项</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>benchmarks</td><td>2:LIBERO-Plus(单臂 Franka,2 相机 256×256)+ RoboTwin 2.0-Plus(双臂 Aloha-Agilex,3 相机 320×240)</td><td>论文 p7</td></tr>
+<tr><td>任务</td><td>RoboTwin 2.0-Plus: 50 双臂任务;LIBERO-Plus: 标准 LIBERO 任务集</td><td>论文 p7, App A</td></tr>
+<tr><td>扰动维度</td><td>7 维度 21 子维度:Camera(C1/C3 active,C2 default off)/Robot/Light(L1-L4)/Background(B1/B2)/Noise(N1-N5)/Layout(O1/O2)/Language(R1/R2/R3)</td><td>论文 App A Table 6</td></tr>
+<tr><td>episodes</td><td>50 episodes/task/config;8 configs/task(1 clean + 7 扰动分支)</td><td>论文 App A.2</td></tr>
+<tr><td>Robot 扰动</td><td>关节 Gaussian noise std=0.1 rad(clip ±0.225 rad);gripper 极端位置(0.05/0.95) p=0.25</td><td>论文 App A.3</td></tr>
+<tr><td>Language 变体</td><td>2500 条预生成(50 任务×50 变体);R1 干扰~30%/R2 共识改写~50%/R3 推理链~20%</td><td>论文 App A.3</td></tr>
+<tr><td>Noise(N1-N5)</td><td>motion blur/Gaussian blur/zoom blur/fog/glass blur;severity [2,3]</td><td>论文 App A.3 Table 6</td></tr>
+<tr><td>Light(L1-L4)</td><td>diffuse color tint[0,3.5]/direction(35% side-light)/specular[0.3,6.0]/shadows</td><td>论文 App A.3</td></tr>
+<tr><td>Camera(C1/C3)</td><td>distance[0.85,1.0]×/orientation yaw-pitch-roll[0,5°]</td><td>论文 App A.3</td></tr>
+<tr><td>模型参数跨度</td><td>VPP 1.5B / GE-Act 2.2B / Cosmos-Policy 2B / LingBot-VA 5.3B / Fast-WAM 6B / DreamZero 14B;VLA 多 2-7B</td><td>论文 Table 1</td></tr>
+<tr><td>action chunk</td><td>π0.5=50 / X-VLA=30 / Fast-WAM=GE-Act=Cosmos=MOTUS=16 / LingBot-VA=32</td><td>论文 Table 5</td></tr>
+<tr><td>π0.5 RoboTwin finetune</td><td>27.5k 训练数据,60k steps,AdamW,cosine lr 2.5e-5→2.5e-6,batch 64,delta joint</td><td>论文 p7</td></tr>
+</tbody></table>
+
+<h2>8. 三类策略的本质区别</h2>
+
+<table class="md-table">
+<thead><tr><th>维度</th><th>VLA</th><th>Hybrid (VLA+WM)</th><th>WAM</th></tr></thead>
+<tbody>
+<tr><td>backbone</td><td>VLM(静态图像-文本)</td><td>VLM + 视频辅助</td><td>视频扩散(动态视频)</td></tr>
+<tr><td>预训练先验</td><td>语义先验</td><td>语义 + 部分时空</td><td>完整时空先验</td></tr>
+<tr><td>鲁棒性来源</td><td>数据多样性补偿</td><td>视频辅助任务注入</td><td>视频先验(必要不充分)</td></tr>
+<tr><td>训练复杂度</td><td>高(需多源数据)</td><td>中</td><td>低(可 Pretrain Free)</td></tr>
+<tr><td>推理速度</td><td>快(63-195ms)</td><td>慢(1175ms)</td><td>慢(190-5230ms)</td></tr>
+<tr><td>代表</td><td>π0.5, OpenVLA-OFT</td><td>MOTUS, VLA-JEPA</td><td>LingBot-VA, Fast-WAM, Cosmos</td></tr>
+</tbody></table>
+
+<p><strong>本研究的核心判断</strong>:WAM 的定位是用视频先验换训练简单性,但付推理速度代价,并不必然比 VLA 强。VLA 用数据多样性也能到鲁棒,但训练复杂。两条路都能到鲁棒,选择取决于算力预算和数据可得性。</p>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default" });
+</script>
+</section><section class="tab-panel" id="figures"><div class='figures-grid'>
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 1</span>
+            <span class='fig-page'>p.7</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>7 类扰动可视化(RoboTwin 2.0-Plus)</h4>
+          <a href="figures/p07.png" target="_blank">
+            <img src="figures/p07.png" alt="7 类扰动可视化(RoboTwin 2.0-Plus)" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Examples of perturbations on RoboTwin 2.0-Plus tasks. Definition of notations (N1, L1, etc.) can be found in Section A.</p>
+          <p class='whatitshows'>RoboTwin 2.0-Plus 七类扰动的可视化样例:Original(baseline)/Camera(C1+C3 视角变化)/Robot(关节+夹爪初始状态)/Language(R1/R2/R3 指令改写)/Light(L1-L4 光照)/Background(B1+B2 背景)/Noise(N1-N5 传感器噪声)/Layout(O1+O2 干扰物+目标位姿)。给读者一个'扰动到底长什么样'的直观感受,定义了所有后续结果的评测口径。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 2</span>
+            <span class='fig-page'>p.9</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>LingBot-VA vs π0.5 失败/成功案例</h4>
+          <a href="figures/p09.png" target="_blank">
+            <img src="figures/p09.png" alt="LingBot-VA vs π0.5 失败/成功案例" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Case studies on RoboTwin 2.0-Plus. Three representative cases comparing π0.5 and LingBot-VA. (a) noise N3: π0.5 collides with hammer and fails. (b) layout: π0.5 collides with red block. (c) lighting L1-L4: π0.5 fails to grasp red block due to misalignment.</p>
+          <p class='whatitshows'>三个 RoboTwin 任务上 π0.5 失败 vs LingBot-VA 成功的 keyframe 对比:①锤击方块(噪声 N3)π0.5 撞锤子失败;②递方块(layout)π0.5 接近时撞红方块失败;③排 RGB 方块(光照 L1-L4)π0.5 因对齐失败抓不到第一块。LingBot-VA 三例都成功。这是'WAM 在视觉扰动下比 VLA 鲁棒'的定性证据——π0.5 在噪声/光照/布局上都崩,LingBot-VA 稳。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 3</span>
+            <span class='fig-page'>p.11</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Cosmos-Policy 预测的未来图像</h4>
+          <a href="figures/p11.png" target="_blank">
+            <img src="figures/p11.png" alt="Cosmos-Policy 预测的未来图像" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Illustrations of future images predicted by Cosmos-policy. Ground-truth and predicted images under three types of perturbations (noise, lighting, and background variations) in LIBERO-Plus are shown.</p>
+          <p class='whatitshows'>Cosmos-Policy 在 LIBERO-Plus 三种扰动(噪声/光照/背景)下预测的未来图像 vs ground truth。关键观察:①噪声扰动下 Cosmos-Policy 能在预测里有效 denoise 运动的机械臂(继承自 web 视频的动态对象先验);②但背景扰动下预测出现严重空间扭曲和颜色不一致——少见背景模式让视频模型崩。这是'WAM 鲁棒性来自视频先验,但视频先验在 OOD 背景上失效'的机制证据。</p>
+        </div>
+        
+</div></section><section class="tab-panel" id="podcast">
+<div class="audio-player">
+  <h3>🎧 音频版</h3>
+  <audio controls preload="metadata" style="width:100%;max-width:560px;">
+    <source src="audio/podcast.mp3" type="audio/mpeg">
+    你的浏览器不支持 audio 元素。<a href="audio/podcast.mp3">下载 MP3</a>
+  </audio>
+  <p class="dur">时长 18:07 · Edge TTS</p>
+</div>
+<div class="podcast-prose"><h1>Do World Action Models Generalize Better than VLAs? A Robustness Study</h1>
+
+<p>2026-04-30，Huawei Technologies 的 Zhanguang Zhang 等人发布的论文，标题是 Do World Action Models Generalize Better than VLAs? A Robustness Study。</p>
+
+<h2>开场：这篇论文真正要解决什么</h2>
+
+<p>这份研究把现在最火的两条机器人策略路线，VLA 和 WAM，放在统一扰动协议下系统比一比，看看到底谁更鲁棒，为什么。它是一个<strong>对照实验</strong>，而不是新模型或新训练方法。</p>
+
+<p>背景是这样。最近一年，WAM，也就是用视频生成模型做机器人策略的那一脉，像 LingBot-VA、Cosmos-Policy、DreamZero 这些，纷纷报告说自己比 VLA 鲁棒。理由听起来很顺：WAM 的 backbone 是视频生成模型，在 web 视频上预训练过，继承了时空先验，知道"动作会让世界怎么变"，所以泛化更好。而 VLA 的 backbone 是 VLM，在静态图像文本上预训练，只有语义先验，缺物理动态先验。</p>
+
+<p>但问题是，这些 WAM 论文各自评测、baseline 自选、协议不统一，数字根本不可比。而且 VLA 阵营的 π0.5 也宣称自己鲁棒性强——它靠的是把 web data、多环境 tabletop、cross-embodiment、移动操作、高层规划、语言指令七类数据全混进去训，用数据多样性补偿先验缺失。</p>
+
+<p>于是"鲁棒性到底来自视频先验还是数据多样性"这个问题被搅成一团浆糊。两个变量在大多数模型上耦合在一起，分不开。</p>
+
+<p>作者要回答的是：<strong>WAM 真的比 VLA 泛化更好吗？如果更好，是视频先验的功劳，还是训练数据多样性的功劳，还是两者都得有？代价是什么？</strong></p>
+
+<h2>它的评测框架：统一扰动协议 + 两互补 benchmark</h2>
+
+<p>要公平对比，第一步是统一评测协议。作者用了两个 benchmark。</p>
+
+<p>一个是 LIBERO-Plus，别人已经提出的，单臂 Franka 机器人，7 类扰动，两个相机 256×256。另一个是作者自建的 RoboTwin 2.0-Plus，双臂 Aloha-Agilex 平台，50 个任务，三个相机 320×240，同样 7 类扰动但扩展到 21 个子维度。两个 benchmark 互补——LIBERO 评单臂灵巧性，RoboTwin 评双臂协调鲁棒性，结论不依赖单一 setup。</p>
+
+<p>七类扰动分别是：Camera（相机视角）、Robot（机器人初始状态）、Language（语言指令改写）、Light（光照）、Background（背景纹理）、Noise（传感器噪声）、Layout（干扰物布局）。每个维度再细分，比如 Noise 有 5 种：motion blur、Gaussian blur、zoom blur、fog、glass blur。Light 有 4 种：diffuse color、direction、specular、shadows。</p>
+
+<p>评测协议有个设计亮点：<strong>独立激活</strong>。每个 config 只开一个扰动维度，其余保持 clean。50 个 episode 每任务每 config，8 个 config 每任务——1 个 clean baseline 加 7 个扰动分支。这样能隔离每个维度的效果，避免混淆。比那种"所有扰动一起上"的评测更能定位失败原因。</p>
+
+<p>然后是模型集合。作者把 10 多个模型分三类放一起比：纯 VLA（π0、π0-FAST、π0.5、OpenVLA-OFT、UniVLA、RIPT-VLA、X-VLA、HoloBrain0-GD、ABot-M0）、混合方法（MOTUS、VLA-JEPA，部分引入视频先验的 VLA）、WAM（GE-Act、Cosmos-Policy、LingBot-VA、Fast-WAM）。所有模型用同一协议、同一硬件评测，数字才可比。</p>
+
+<p>这里有个诚实交代：DreamZero 和 GigaWorld-Policy 被排除。DreamZero 因为 14B 的 Wan2.1 backbone 太贵，重训不现实，而且推理需要 15 分钟 warmup，benchmark 级评测几千个 episode 根本跑不动。GigaWorld-Policy 没开源。这本身是个发现——最大的 WAM 在 benchmark 评测上不实际，暗示 WAM 路线要落地，推理效率是硬约束。</p>
+
+<h2>三类策略到底差在哪：把 protocol 讲清</h2>
+
+<p>光说"VLA 用 VLM backbone、WAM 用视频 backbone"还不够具体，我把三类家族的差异拆成三个关键点。</p>
+
+<p>第一，<strong>backbone 不同</strong>。VLA 的 backbone 是 VLM，在静态图像文本上预训练，继承了语义先验。WAM 的 backbone 是视频扩散模型，在 web 视频上预训练，继承了时空先验——知道物体怎么动、物理动态怎么演化。这决定了它们能不能"预测动作会让世界怎么变"。</p>
+
+<p>第二，<strong>因果预测方向不同</strong>。WAM 内部还分三式。IDM 式，像 LingBot-VA 和 GE-Act，先预测未来视觉状态，再条件化动作——p(h_{t+1}|h_t) 乘以 g(a|h_t, h_{t+1})，类似逆动力学模型。联合去噪式，像 Cosmos-Policy、DreamZero、Fast-WAM，共享 timestep 联合预测视觉状态和动作。动作优先式，像 GigaWorld-Policy，先预测动作，再条件化生成未来视觉状态。论文后面发现，这三个方向对鲁棒性影响很大——IDM 式对训练数据多样性依赖最低，因为显式的状态-动作因果耦合提供了额外架构先验。</p>
+
+<p>第三，<strong>测试时是否生成视频</strong>。LingBot-VA、GE-Act、Cosmos-Policy 这些，测试时必须先生成未来视觉状态，再从状态解码动作，所以慢。Fast-WAM 和 GigaWorld-Policy 测试时可以跳过视频生成，直接出动作，所以快——但 Fast-WAM 仍比 π0.5 慢 3 倍。</p>
+
+<p>记住这三个差异，后面听结果时就明白为什么不同模型表现不同。鲁棒性不只是 backbone 的事，因果方向和测试时策略都影响。</p>
+
+<h2>给你一个数值 sense：这套评测到底多大</h2>
+
+<p>光说"7 类扰动 21 子维度"可能没感觉，我把维度念细一点。</p>
+
+<p>RoboTwin 2.0-Plus 有 50 个双臂任务，每任务 8 个 config（1 clean + 7 扰动分支），每 config 50 个 episode。所以一个模型完整评测要 50 × 8 × 50 = 2 万个 episode。10 多个模型全跑，episode 数是天文数字——这也是 DreamZero 被排除的原因之一。</p>
+
+<p>扰动具体长什么样？Robot 扰动是在 home 关节角度上加高斯噪声，标准差 0.1 弧度，clip 到 ±0.225 弧度；夹爪有 25% 概率被设到极端位置（0.05 或 0.95）。Language 是 2500 条预生成的指令变体，50 任务每个 50 条，分三种：R1 干扰约 30%（把指令包在无关对话里）、R2 共识改写约 50%（用功能描述替换物体名）、R3 推理链约 20%（把祈使句改成目标状态描述）。Noise 五种，severity 在 2 到 3 之间。Camera 是 head 相机距离缩放 0.85 到 1.0，yaw-pitch-roll 各 0 到 5 度扰动。</p>
+
+<p>模型参数跨度很大。VLA 多在 2 到 7B。WAM 从 VPP 的 1.5B 到 DreamZero 的 14B 都有，主流是 2 到 6B：GE-Act 2.2B、Cosmos-Policy 2B、LingBot-VA 5.3B、Fast-WAM 6B。</p>
+
+<p>action chunk 大小随模型：π0.5 是 50，X-VLA 是 30，Fast-WAM、GE-Act、Cosmos、MOTUS 都是 16，LingBot-VA 是 32。这影响响应频率——chunk 大开环执行久，chunk 小更 reactive。</p>
+
+<p>推理延迟是这套评测最该记住的数字。π0.5 是 63 毫秒基线。X-VLA 195 毫秒，3.1 倍。Fast-WAM 190 毫秒，3 倍，是最快的 WAM，因为它测试时跳过视频生成。GE-Act 300 毫秒，4.8 倍。Cosmos-Policy 390 毫秒，6.2 倍。LingBot-VA 真实世界配置 480 毫秒，7.6 倍。MOTUS 1175 毫秒，18.6 倍。LingBot-VA 在 RoboTwin 上用 25 步 state denoising 加 50 步 action denoising，5230 毫秒，83 倍——这是 5.2 秒一次推理，根本没法实时控制。</p>
+
+<p>记住这套数字，后面听 WAM 部署讨论时可以拿它当标尺：4.8 倍是 WAM 比 VLA 慢的下限，83 倍是上限。state denoising steps 是主导 runtime 的关键。</p>
+
+<h2>主结果：WAM 确实更鲁棒，但不是全方位</h2>
+
+<p>我挑 RoboTwin 2.0-Plus 的主结果讲。LingBot-VA 总分 74.2% 第一，Fast-WAM 72.7% 第二，MOTUS 71.5% 第三，π0.5 58.6% 垫底，X-VLA 53.1%。</p>
+
+<p>但看分项就有意思了。LingBot-VA 在 Light 89.0%、Background 91.3%、Noise 80.9%、Layout 87.9% 上都是最强——视觉扰动上 WAM 确实碾压。但在 Camera 上 LingBot-VA 只有 28.9%，Robot 上 36.2%。π0.5 在 Camera 上 45.6%、Robot 上 27.6%，差距没那么大。</p>
+
+<p>这说明什么？说明 WAM 的鲁棒性集中在视觉外观扰动上——噪声、光照、背景纹理、干扰物布局，这些视频先验能帮上忙，因为 web 视频见过各种各样的视觉变化。但相机视角变化和机器人初始状态变化，本质是几何配置变化，视频先验帮不上忙——视频模型没学过"视角变了世界该怎么变"。所以 WAM 在这两项上和 VLA 一样弱。</p>
+
+<p>这是这篇论文第一个重要发现：<strong>WAM 不是万能鲁棒，它有明确的边界——视觉外观强、几何配置弱</strong>。</p>
+
+<h2>反转：LIBERO 上 VLA 反而更强</h2>
+
+<p>但故事没完。在 LIBERO-Plus 上，π0.5 总分 85.7% 反而最高，超过所有 WAM。Cosmos-Policy 82.2% 第二，GE-Act 80.3% 第三。</p>
+
+<p>为什么 π0.5 在 RoboTwin 上垫底，在 LIBERO 上第一？因为 π0.5 的训练数据极其多样复杂——web data、multi-env tabletop、cross-embodiment、mobile manipulation、high-level planning、verbal instruction 七类数据全混进去训。它用数据多样性补偿了视频先验缺失。</p>
+
+<p>对比一下 WAM 的训练。Cosmos-Policy 只用 185 条 task 轨迹，没有 embodied pre-training，就达到 82.2%。Fast-WAM 只用 60 小时 task 数据，达到 72.7%。WAM 靠视频 backbone 先验，训练简单得多。</p>
+
+<p>所以第二个重要发现：<strong>VLA 也能鲁棒，但代价是训练数据极其多样复杂；WAM 鲁棒更省事，靠视频先验省数据</strong>。两条路殊途同归到鲁棒，但代价不同。这是对"VLA 必然输给 WAM"这种简单论调的纠正。</p>
+
+<h2>最干净的因果论证：Fast-WAM 天然实验</h2>
+
+<p>前面两个发现还是有点绕——π0.5 数据多样性强、WAM 先验强，两个变量在不同模型上耦合，还是分不开到底哪个更关键。作者找了一个特别干净的天然实验：Fast-WAM。</p>
+
+<p>Fast-WAM 同一个架构、同一个 Wan2.2-5B backbone，但在两个 benchmark 上用了不同训练数据。RoboTwin 上用 clean 加 domain-randomized 27.5k 数据训，数据多样。LIBERO 上只用 clean 数据训，数据单一。除此之外，架构、backbone、训练流程完全相同。</p>
+
+<p>结果对比：RoboTwin 上 Original 91.2%，扰动平均 72.7%，降 18 个点。LIBERO 上 Original 97.6%，扰动平均 51.5%，降 46 个点。两个 checkpoint 的扰动鲁棒性差 21 个点。</p>
+
+<p>这是整个研究最有价值的发现。<strong>唯一变量是训练数据多样性</strong>，结果差 21 个点。这证明：<strong>视频先验必要但不充分，task-specific 训练数据多样性仍是关键杠杆</strong>。即使有视频 backbone 先验，训练数据不够多样，鲁棒性照样崩。</p>
+
+<p>这个发现把社区从"视频先验万能"的幻觉里拉回来。WAM 不是装上视频 backbone 就自动鲁棒，你还得给够多样的 task 数据。</p>
+
+<h2>进一步：架构选择也影响鲁棒性</h2>
+
+<p>还有一个更细的发现。对比 LingBot-VA 和 Fast-WAM，两者都是 WAM，但因果预测方向不同。LingBot-VA 是 IDM 式，先预测未来视觉状态再条件化动作。Fast-WAM 是联合去噪式，共享 timestep 联合预测状态和动作。</p>
+
+<p>Fast-WAM 在 LIBERO 数据单一时鲁棒性崩到 51.5%。LingBot-VA 在数据相对单一时还稳。论文的解释是：IDM 式有显式的状态-动作因果耦合，提供了额外架构先验，所以对训练数据多样性依赖更低。联合去噪式没有这种显式耦合，更依赖数据多样性来学到状态-动作关系。</p>
+
+<p>这说明<strong>架构选择影响鲁棒性，不只是 backbone</strong>。设计 WAM 时，因果方向是个重要考量。如果你担心数据不够多样，IDM 式可能更稳；如果数据够多样，联合去噪式可能更灵活。这是个实用的设计指导。</p>
+
+<h2>推理延迟：WAM 部署的硬障碍</h2>
+
+<p>最后讲 WAM 最大的代价——慢。前面数值 sense 里我念过：WAM 全部至少比 π0.5 慢 4.8 倍，最快的 Fast-WAM 也要 3 倍，最慢的 LingBot-VA 在 RoboTwin 上 83 倍，5.2 秒一次推理。</p>
+
+<p>作者拆解了慢在哪。主要是 state denoising steps，不是 action。GE-Act 只要 1 步 state denoising 加 10 步 action，所以是 WAM 里最快的之一（300 毫秒）。LingBot-VA 在 RoboTwin 上用 25 步 state 加 50 步 action，所以 5230 毫秒。state denoising 主导 runtime，因为它要生成高维的视频 latent，比 action decoding 重得多。</p>
+
+<p>Fast-WAM 的加速思路是测试时跳过 state 生成，直接出动作。这让它成为最快的 WAM（190 毫秒）。但代价是：数据单一时鲁棒性崩——因为跳过 state 生成失去了视频先验的"想象未来"能力。这是个 trade-off：速度和鲁棒性不能兼得，至少在 Fast-WAM 这种联合去噪设计上是这样。</p>
+
+<p>这指明了 WAM 加速的方向：减少或跳过 state denoising。但跳过有代价，所以需要更聪明的设计——比如 DreamZero-Flash 那种解耦 noise schedule，或者像 GigaWorld-Policy 那样测试时根本不生成视频但训练时保留视频预测目标。</p>
+
+<h2>一个最值得记住的 insight</h2>
+
+<p>这篇研究最有价值的判断，我建议你重点记：<strong>视频先验是必要条件，不是充分条件；数据多样性仍是关键杠杆</strong>。</p>
+
+<p>这句话分量很重。它纠正了"WAM 自动鲁棒"的简单论调。你装上视频 backbone，确实继承了时空先验，能在视觉扰动上比 VLA 强。但这只是入场券，不是终点。如果 task-specific 训练数据不够多样，鲁棒性照样崩——Fast-WAM 从 72.7% 掉到 51.5% 就是证据。</p>
+
+<p>这个发现对 WAM 路线的实践意义是：你不能因为有了视频 backbone 就在 task 数据采集上偷懒。反过来对 VLA 路线也是鼓励：没有视频先验，靠数据多样性也能到鲁棒，π0.5 的 85.7% 就是证据。两条路都能到鲁棒，选择取决于你的算力预算和数据可得性。</p>
+
+<h2>局限：别替它过度外推</h2>
+
+<p>论文自己承认的：DreamZero 和 GigaWorld-Policy 被排除，评测集合不完整，最强 WAM 可能未参评。Fast-WAM 两个 checkpoint 的 task 不同（RoboTwin 双臂 vs LIBERO 单臂），所以"数据多样性"和"task 类型"两个变量未完全隔离——这是这个天然实验的一个瑕疵。WAM 推理慢是部署障碍，本研究只诊断未提出加速方案。</p>
+
+<p>我们读出的：扰动评测是"独立激活"每维度，未做多扰动叠加评测。真实世界往往是多扰动同时发生，独立激活可能高估或低估实际鲁棒性。π0.5 在 RoboTwin 上是作者自训（JAX，60k steps），可能未达 π0.5 在 PI 原生训练的最优水平。7 维度扰动里 Language 只测了指令改写，没测多语言、跨文化指令；Camera 只测了视角小扰动（±10°），没测极端视角变化。所有评测都在仿真，真机鲁棒性未验证——sim 里的"光照/噪声"和真机传感器噪声分布不同，结论外推到真机需谨慎。</p>
+
+<p>所以这份研究是 WAM vs VLA 鲁棒性对照的一个扎实基线，但不是终点。它支持"视频先验有用但有边界、数据多样性仍是关键"这个判断，不等于工业现场的鲁棒部署已经解决。</p>
+
+<h2>一句话收束</h2>
+
+<p>这份研究在统一扰动协议下系统对比了 10 多个 VLA、WAM、混合方法，发现 WAM 在视觉扰动（噪声、光照、背景、布局）上确实比 VLA 鲁棒，但相机视角和机器人初始状态是两类方法的共同硬伤；VLA 用数据多样性也能到鲁棒，但训练更复杂。它最有力的论证是 Fast-WAM 那个天然实验，重点不在于"WAM 更强"——同架构同 backbone，只改训练数据多样性，鲁棒性差 21 个点——这把"视频先验必要但不充分，数据多样性仍是关键杠杆"这个判断钉死了。</p>
+</div></section>
+</main>
+<div class="footer">generated by paper-podcast skill · card.json 是真相源，其它文件是其视图</div>
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+</script>
+</body>
+</html>

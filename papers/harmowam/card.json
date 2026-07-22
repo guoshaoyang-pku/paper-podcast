@@ -1,0 +1,339 @@
+{
+  "slug": "harmowam",
+  "title": "HarmoWAM: Harmonizing Generalizable and Precise Manipulation via Adaptive World Action Models",
+  "authors": [
+    "Qiuxuan Feng",
+    "Jiale Yu",
+    "Jiaming Liu",
+    "Yueru Jia",
+    "Zhuangzhe Wu",
+    "Hao Chen",
+    "Zezhong Qian",
+    "Shuo Gu",
+    "Peng Jia",
+    "Siwei Ma",
+    "Shanghang Zhang"
+  ],
+  "affiliation": "Peking University · Simplexity Robotics · CUHK",
+  "arxiv": "2605.10942",
+  "date": "2026-05-11",
+  "venue": "arXiv preprint (PKU)",
+  "category": "Hybrid WAM",
+  "one_liner": "把 WAM 的两条旧路线(Imagine-then-Execute 泛化好但不准 / Joint Modeling 准但 OOD 探索崩)用一个共享世界模型 + 两个互补 action expert + 一个过程自适应门控统一进来,transit 用 reactive expert 借世界模型泛化、interaction 用 predictive expert 借隐含 latent 精准对齐,实现泛化和精度同时拿住。",
+  "problem": {
+    "what_they_address": "现有 WAM 分两条路:Imagine-then-Execute 先生成未来视频再用 inverse dynamics(IDM)反推动作,transit(物体间移动)泛化强但 interaction(精细操作)精度差;Joint Modeling 直接联合建模 video+action,interaction 精度高但 transit 在 OOD 下探索空间被 SFT 数据分布锁死,到不了目标。作者要解决的是:怎么在一个端到端 WAM 里同时拿到泛化的 transit 和精准的 interaction,而不是二选一。",
+    "why_prior_work_falls_short": "作者用系统性 motivation 实验(Table 1)证明两条路是结构性 trade-off 而非工程问题:Imagine-then-Execute 的 IDM 只从像素反推动作,缺接触级精度(OOD interaction 平均掉到 55%);Joint Modeling 把 action 绑死在 SFT 分布上,OOD transit 掉到 32%,即使把机器人初始化到目标附近 interaction 还能 95%,说明瓶颈是探索不是精度。两条路各自最优解都在对方最弱处失效,简单 ensemble(平均)也不行——需要阶段感知的动态路由。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "visual observation",
+        "type": "image",
+        "detail": "当前帧 RGB,3 视角(单臂:1 第三人称 + 2 腕部;双臂:1 全局 + 2 腕部),RealSense 640×480。世界模型用其中一路生成 13 帧未来视频"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "任务指令(如 'Put the flowers into the vase'),经冻结 T5 text encoder 编码"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "机器人本体状态;单臂 7-DoF、双臂 14-DoF(每臂 7 维:3 位置位移 + 3 Euler 角 + 1 夹爪)"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "predicted video V_{t:t+H}",
+        "type": "video",
+        "detail": "13 帧未来视频,分辨率 256×320,经世界模型 5 步去噪生成,作为 reactive expert 的显式输入和两个 expert 的隐式 latent 来源"
+      },
+      {
+        "name": "action chunk",
+        "type": "continuous",
+        "detail": "H=12 步连续动作;单臂 R^7 / 双臂 R^14(相对末端位姿位移 + Euler 角 + 二值夹爪);48Hz 生成"
+      }
+    ],
+    "control_frequency": "action 生成 48Hz,chunk size H=12;世界模型视频去噪 5 步;整条管线在 8×H20 GPU 训练",
+    "concat_protocol": "<bos_ctx>[I_t (3-view RGB)]<eos_ctx><bos_lang>T5(l_t)<eos_lang><bos_wm>NoisyLatent x_ξ (256×320×C, 13 帧)<eos_wm><bos_cond>F_V_t ∈ R^{B×80×3072} (世界模型当前步隐含 latent)<eos_cond><bos_gate>F_img_t (SigLIP patch) → s_t ∈[0,1]<eos_gate><bos_chunk>[Predictive: noisy a_{t+1:t+12} 经 28-block DiT cross-attn(条件 F_img_t, F_text, F_V_t)] OR [Reactive: [DINOv2(V_s) patch; pool(F_V_s)]→ OrientationDecoder → â_s, s∈{t+1..t+H}]<eos_chunk>\n\n逐 token 解释:\n- <bos_ctx>...<eos_ctx>:多视角观测不是在序列维拼接的——世界模型只用其中一路(单臂第三人称 / 双臂全局)生成 13 帧未来视频;另一路视角喂给 predictive expert 的 SigLIP 提供实时闭环视觉。所以'多视角处理'是按模块分工而非序列拼接。\n- <bos_lang>...<eos_lang>:语言经 T5 编码,以 cross-attention 注入世界模型和 predictive expert 的 DiT block,不是序列 token 拼接。\n- <bos_wm>...<eos_wm>:世界模型对 noisy latent x_ξ 做条件 flow matching 去噪(5 步),生成 13 帧未来视频 V_{t:t+H} 及其隐含 latent F_V_{t:t+H} ∈ R^{B×80×3072}。80 token = Wan2.2-VAE 把 256×320 压到 16×20 latent 再 patch 化(2×2)得到。\n- <bos_cond>...<eos_cond>:当前步的隐含 latent F_V_t 是世界模型给两个 expert 的共享'隐式'条件,通过 cross-attention 注入 predictive expert、concat 进 reactive expert 的 token 维。\n- <bos_gate>...<eos_gate>:门控用当前观测的 SigLIP patch 特征 F_img_t 经轻量 MLP 出 s_t∈[0,1];推理时 s_t>0.5 走 predictive expert(interaction 精准),否则走 reactive expert(transit 泛化)。\n- <bos_chunk>...<eos_chunk>:两条 expert 不并行跑——由门控二选一。Predictive 用 diffusion loss 学(预测加噪声),Reactive 用 Smooth L1 学(回归动作)。这是 'harmonizing' 的核心:不是平均,是阶段感知的硬切换。\n\n三个坑:(1) language 是 cross-attention 不是序列拼接;(2) 多视角按模块分工(世界模型一路、expert 另一路)不在序列层处理;(3) 训练和推理 context 一致(都喂当前观测 + 未来视频),但训练时未来视频用 GT 去 teacher-force 世界模型、推理用世界模型自己生成的;门控训练用 keyframe pipeline 自动标的 y∈{0,1} 监督。"
+  },
+  "datasets": [
+    {
+      "name": "自采真实示教(主)",
+      "size": "6 任务 × 100 轨迹",
+      "note": "Franka FR3 + UMI gripper;4 单臂(Pick Fruit / Stack Cans / Pour Coke / Write 'Yes')+ 2 双臂(Put Flowers in Vase / Put Items to Bag and Zip);SpaceMouse 遥操,平均 280-400 步/轨迹,多 stage 顺序评测"
+    },
+    {
+      "name": "DROID",
+      "size": "201,119 轨迹",
+      "note": "公开 Franka Panda 数据,用于世界模型预训练"
+    },
+    {
+      "name": "AgiBot",
+      "size": "3,017 轨迹",
+      "note": "AgiBot G1,用于世界模型预训练"
+    },
+    {
+      "name": "RoboMIND",
+      "size": "1,721,985 轨迹",
+      "note": "Franka/UR/Ark/Agilex/TienKung 多本体,用于世界模型预训练"
+    },
+    {
+      "name": "世界模型预训练总计",
+      "size": "~1.9M 轨迹",
+      "note": "上述公开数据 + 闭源机器人数据,给 Wan2.2-TI2V-5B 注入机器人物理先验"
+    }
+  ],
+  "architecture": {
+    "backbone": "Wan2.2-TI2V-5B(text+image to video diffusion,5B,MoE)+ 自研 Action DiT(1B)+ SigLIP + DINOv2-base + T5 + 轻量门控 MLP",
+    "params": "世界模型 5B(stage1 全参 finetune 后 stage2 冻结);Predictive expert DiT 1B(28 blocks);Reactive expert = DINOv2-base + OrientationDecoder(多尺度卷积);Gate = 轻量 MLP;T5/SigLIP/DINOv2 各自冻结",
+    "type": "Hybrid WAM:共享世界模型(diffusion)+ 双 expert(diffusion expert + IDM-style reactive expert)+ 过程自适应门控(MLP 路由)",
+    "key_components": [
+      "World Model(Wan2.2-TI2V-5B):5 步去噪生成 13 帧 256×320 未来视频 + 隐含 latent F_V∈R^{B×80×3072};stage1 flow matching 全参 finetune,stage2 冻结",
+      "Predictive Action Expert(1B DiT,28 blocks):把当前隐含 latent F_V_t 经 cross-attention 注入,diffusion 去噪生成 H=12 步动作;负责 interaction 精准",
+      "Reactive Action Expert(DINOv2-base + OrientationDecoder):对每帧未来视频 V_s 提 patch 几何特征,与池化后的 F_V_s 在 token 维 concat,经多尺度卷积 decoder 出动作;负责 transit 泛化(从世界模型预测的未来反推 IDM)",
+      "Process-Adaptive Gating(MLP):用 SigLIP patch 特征出 s_t∈[0,1],>0.5 走 predictive,否则走 reactive;keyframe pipeline 自动标 y(夹爪状态变化 / 末端高度阈值 ±20 帧窗口)",
+      "双 expert 互补来源:predictive 吃隐含 latent(时序物理先验)、reactive 吃显式未来视频(泛化视觉先验);两者都来自同一个世界模型,不是两个独立模型"
+    ],
+    "why_this_design": "动机实验(Table 1)证明两条旧 WAM 路线是结构性 trade-off:Imagine-then-Execute 的 IDM 只看像素缺精度,Joint Modeling 把 action 绑死在 SFT 分布上 OOD 到不了目标。HarmoWAM 的解法不是折中而是分工——让世界模型同时提供显式未来视频(给 reactive 做泛化 transit)和隐含 latent(给 predictive 做精准 interaction),再用门控按任务阶段(transit vs interaction)硬路由。这样 reactive 借世界模型的泛化能力跳出 SFT 分布,predictive 借隐含 latent 拿到时序相干的精细控制。双 expert 都从同一个世界模型取条件,保证物理先验共享,不变成两个割裂的模型。",
+    "numerical_sense": {
+      "dit_worldmodel": "Wan2.2-TI2V-5B,5B 参数(MoE);Wan2.2-VAE 压缩比 16×16×4(空间 16×、时间 4×);hidden 3072",
+      "dit_predictive": "1B 参数,28 Transformer blocks,diffusion 去噪",
+      "resolution": "世界模型 256×320(VAE 压到 16×20 latent);摄像头原始 640×480",
+      "vae": "Wan2.2-VAE:空间 16× 下采样(256×320→16×20),时间 4× 下采样,latent 通道 16",
+      "per_frame_latent_dim": "16×20×16 ≈ 5120 维/latent 帧;经 patch(2×2)→ 80 token × 3072 维(论文显式给 R^{B×80×3072})",
+      "chunk": "世界模型预测 13 帧未来视频;action chunk H=12 步;视频去噪 5 步(3步80%→5步85%,50步87% 边际递减,Table 9)",
+      "context": "当前观测 1 帧 + 13 帧未来视频;无长历史上下文(不像 DreamZero 的 6.6s KV-cache),靠世界模型的预测 horizon 提供'前瞻'",
+      "action": "连续相对位姿:单臂 7-DoF(3 位移 + 3 Euler + 1 夹爪),双臂 14-DoF;H=12 步/chunk,生成频率 48Hz",
+      "training": "8×H20 GPU;两阶段:stage1 世界模型全参 flow matching finetune(~1.9M 轨迹预训练 + 自采 finetune),stage2 冻结世界模型、训 predictive(diffusion loss)+ reactive(Smooth L1, β=0.1)+ gate(BCE);λ_react=0.1, λ_gate=0.05;门控离线准确率 96.95%"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 2,
+      "title": "Overview + 四类 OOD 对比",
+      "caption_original": "We propose HarmoWAM, an end-to-end WAM that jointly achieves generalizable transit and precise manipulation through a world model that provides physical dynamics priors and adaptively coordinates a predictive action expert and a reactive action expert. HarmoWAM achieves SOTA performance in ID settings and exhibits a substantial advantage in OOD scenarios.",
+      "what_it_shows": "门面图。上半把核心机制画清:世界模型出未来视频 + latent,Process-Adaptive Gating 用 Yes/No 决定走 Predictive expert(隐含 latent→结构化动作,精准)还是 Reactive expert(显式未来帧→反应式动作,泛化);下半对比 Cosmos-Policy / Wan+Anypos 在 ID/OOD 三维(Position/Background/Objects)上的表现,HarmoWAM 在 OOD 全绿。一句话讲清论文 thesis:不是又一个大模型,是把两条对立路线用门控统一。",
+      "image_path": "figures/p02.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 5,
+      "title": "Framework(最重要)",
+      "caption_original": "HarmoWAM adopts an adaptive framework that tightly integrates a generative world model with two complementary action experts. The world model provides both explicit future predictions and implicit latent representations. Conditioned on current latent features, the predictive expert generates structured actions for precise manipulation, while the reactive expert leverages future predicted frames and their latent features to perform reactive inference for generalizable transit. A Process-Adaptive Gating mechanism predicts the task stage from observations and dynamically routes control between the two action experts.",
+      "what_it_shows": "全文最该看。左路:输入(I_t, l_t)→ Wan Encoder/T5 → 30 DiT block 世界模型(diffusion ×T 步)→ 13 帧未来视频 V + 隐含 latent F_V。中间世界模型把 F_V_t 喂给两个 expert。Predictive(上):28 DiT blocks,self-attn + cross-attn(条件 F_img_t 来自 SigLIP、F_text、F_V_t),diffusion 出 a_{t+1..t+3}。Reactive(下):DINOv2 ×12 ViT + Patch Embedding + Pooling,把 patch 特征和 latent concat,经 Conv/FFN 出 a。右侧 Process-Adaptive Gating:从 SigLIP 取 F_img → MLP → s_t,if s_t>0.5 走 predictive 否则 reactive。一张图同时回答:世界模型怎么共享、两 expert 怎么取不同条件、门控怎么路由。",
+      "image_path": "figures/p05.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 7,
+      "title": "Attention 可视化 + 执行过程",
+      "caption_original": "The upper part presents attention map visualizations from the last-layer features of the reactive and predictive experts, while the lower part illustrates the robot execution process.",
+      "what_it_shows": "上半是两个 expert 最后一层 attention map 的可视化。关键观察:Predictive expert 注意力集中在'被操作物体'(说明它在做接触级精细规划),Reactive expert 注意力散在'夹爪和任务相关周围环境'(说明它在做空间导航/接近)。这给双 expert 分工提供了机理证据——不是凭空分,是它们天然 attend 到不同区域。下半是执行过程帧序。",
+      "image_path": "figures/p07.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 4",
+      "page": 9,
+      "title": "OOD 泛化实验设置",
+      "caption_original": "Generalization experiments. Red boxes highlight unseen objects, background variations, and manipulated object positions, while blue boxes indicate original training configurations.",
+      "what_it_shows": "三个 OOD 维度的视觉定义。Unseen Background(加 5-8 个未见干扰物 + 光照变化)、Unseen Position(目标放在训练覆盖区域之外的空间不相交区域)、Unseen Objects(胡萝卜换辣椒、可乐换红牛、花换不同颜色数量)。蓝框=训练配置,红框=测试配置。定义了 Table 3 所有 OOD 结果的评测口径——三档 OOD 是正交维度,不是简单'换背景'。",
+      "image_path": "figures/p09.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 5",
+      "page": 9,
+      "title": "Ablation Study",
+      "caption_original": "We investigate (a) HarmoWAM Structure, (b) Efficacy of Process-Adaptive Gating, and (c) Impact of world model latent features on both action experts. The '-vid' suffix indicates that video latent features are excluded from the action expert's conditioning.",
+      "what_it_shows": "三组消融。(a) 去掉 Reactive expert → position OOD 掉到 14%(证明 reactive 负责探索);去掉 Predictive → position/objects OOD 掉到 56%/60%(证明 predictive 负责精度)。两 expert 互补,缺一不可。(b) 门控 vs Averaging vs Keyframe-Averaging:Averaging 在 position OOD 掉 46%,门控只掉很少——证明阶段感知硬路由 > 数值平均。(c) 去掉世界模型 latent 特征:reactive-vid ID 65%/OOD 54%,predictive-vid ID 从 95% 掉到 62%——证明世界模型 latent 是两 expert 的关键条件,不是装饰。三组消融各自论证一个设计选择。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 15,
+      "title": "硬件 setup",
+      "caption_original": "Real-World robot setup and experimental assets.",
+      "what_it_shows": "硬件照片。单臂:Franka FR3 + 3D 打印 UMI gripper + 3 个 Intel RealSense(前视 D435 45°、俯视 D455、腕部 D435)。双臂:两台并行 FR3 + 同 UMI gripper + 1 全局 + 2 腕部。SpaceMouse 遥操。说明实验在真实 Franka 上做,不是仿真;UMI gripper 是为接触级精度定制的 3D 打印件。",
+      "image_path": "figures/p15.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 7",
+      "page": 18,
+      "title": "两条旧路线的失败案例",
+      "caption_original": "Representative failure cases of the two World Action Models paradigms under OOD scenarios. The first three rows show typical failures of the Joint Modeling baseline and the last three rows show common failures of the Imagine-then-Execute baseline.",
+      "what_it_shows": "支撑 Table 1 motivation 的失败可视化。前 3 行 Joint Modeling 失败:OOD 下背景/位置变化让预测轨迹偏离目标区,末端到不了物体上方(transit 失败,根本进不了 interaction)。后 3 行 Imagine-then-Execute 失败:transit 能到目标附近,但 IDM 反推的动作在 interaction 偏——抓取点偏移、夹爪提前开合。两组失败各自精确对应论文说的 trade-off:一边死于探索、一边死于精度。这是 HarmoWAM 要统一的对象。",
+      "image_path": "figures/p18.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 8",
+      "page": 19,
+      "title": "六任务完整执行序列",
+      "caption_original": "Visualization of complete execution sequences on six real-world manipulation tasks.",
+      "what_it_shows": "HarmoWAM 在 6 个任务上的完整执行帧序:Pick Fruit / Stack Cans / Pour Coke / Write 'Yes' / Put Flowers in Vase / Put Items to Bag and Zip。强调运动轨迹平滑连续,尤其 Stack Cans 的对齐、Pour Coke 的持续角度控制、Flower insertion 的紧公差对齐。是 Table 2 ID 结果的可视化证据。",
+      "image_path": "figures/p19.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 9",
+      "page": 20,
+      "title": "三档 OOD 完整示例",
+      "caption_original": "Visualization of the complete examples under three OOD settings: unseen background, unseen position, and unseen objects.",
+      "what_it_shows": "HarmoWAM 在三档 OOD 下的完整执行示例,对应 Table 3。Unseen Background(干扰物+光照)、Unseen Position(空间不相交区域)、Unseen Objects(换物体)。是 OOD 82% 平均成功率的可视化证据,展示模型能在未见背景/位置/物体上完成完整任务。",
+      "image_path": "figures/p20.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 10",
+      "page": 23,
+      "title": "去噪步数对比",
+      "caption_original": "Visual comparison of generated videos under different denoising steps.",
+      "what_it_shows": "世界模型 3/5/10/50 步去噪生成的未来视频对比。3 步明显模糊缺细节(对应 success 80%);5 步保留关键动作阶段和物体位置清晰度(85%);10/50 步视觉质量略升但 success 仅 85%/87%,推理频率反而降。支撑 Table 9 结论:5 步是 quality-speed 甜点,更多步边际递减。",
+      "image_path": "figures/p23.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 11",
+      "page": 24,
+      "title": "HarmoWAM 失败案例",
+      "caption_original": "Failure case visualization of HarmoWAM. We visualize representative failures in real-world Franka experiments, with red boxes highlighting the key error regions.",
+      "what_it_shows": "HarmoWAM 自己的三类失败:(1)Tilted stacking——堆叠时前后位移估计不准(第三人称视角对该方向小偏移不敏感),放上去后倾斜滑落;(2)Insertion misalignment——插花时抓取位置变化改变花茎外露长度,插入姿态对不齐;(3)Zipper grasp slip——拉链夹持摩擦力不足,持续拉拽中脱出。三类失败都不是'理解错任务'而是'精度/硬件极限'——诚实展示方法边界。",
+      "image_path": "figures/p24.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "双 expert 分工:隐含 latent(precision)vs 显式未来视频(generalization)",
+      "problem_it_solves": "一个 action head 既要做泛化 transit 又要做精准 interaction,两条目标在表征层冲突",
+      "how": "世界模型同时产出两路:隐含 latent F_V_t(时序物理先验,经 cross-attention 喂 predictive DiT,做 interaction)+ 显式未来视频 V_{t:t+H}(泛化视觉先验,喂 reactive expert 的 DINOv2+OrientationDecoder,做 transit IDM)。两个 expert 用不同损失(diffusion vs Smooth L1)、不同 backbone(1B DiT vs DINOv2-base+卷积),但共享同一世界模型条件。",
+      "why_it_works": "Figure 3 attention map 给机理证据:predictive attend 物体(接触级)、reactive attend 夹爪+周围(空间级)。Figure 5c 消融:去掉 latent 特征,predictive ID 从 95% 掉到 62%、reactive 掉到 65%——证明 latent 是两 expert 的关键条件,不是装饰。这把'两条旧路线各有最优解'的观察工程化为'一个世界模型喂两个专门化 expert'。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Process-Adaptive Gating:阶段感知硬路由",
+      "problem_it_solves": "双 expert 怎么协同——简单平均会互相抵消,固定阶段切换不适应任务进程",
+      "how": "轻量 MLP 用 SigLIP patch 特征 F_img_t 出 s_t∈[0,1],推理时 >0.5 走 predictive(interaction),否则走 reactive(transit)。训练监督用 keyframe pipeline 自动标 y:夹爪状态变化(open↔close)或任务相关末端高度阈值作为 key event,前后各 20 帧窗口标 y=1(interaction),其余 y=0(transit);双臂任一满足即标 interaction。BCE loss,λ_gate=0.05。",
+      "why_it_works": "Figure 5b 消融:Averaging 在 position OOD 掉 46%,Keyframe-Averaging 掉 31%,门控几乎不掉。证明阶段感知硬路由 > 数值平均——平均让两个 expert 互相干扰,门控让各自在最擅长的阶段发力。离线门控准确率 96.95%(1637 测试帧对),说明 keyframe 自动标注够可靠。这是论文最核心的设计杠杆。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Motivation 实验:把 trade-off 做成结构化诊断",
+      "problem_it_solves": "为什么需要新框架——必须先证明两条旧路线是结构性 trade-off 而非工程问题",
+      "how": "在两个代表任务(Put Flowers in Vase 长程双臂、Stack Coke Cans 精密堆叠)上,把任务拆成 transit/interaction 两阶段,ID + 3 档 OOD 各 10 次试验。关键设计:Joint Modeling 的 interaction 用'初始化到目标附近'测,解耦 transit 失败和 interaction 精度。",
+      "why_it_works": "Table 1 给出决定性证据:Imagine-then-Execute 的 transit 在 OOD 几乎 10/10 满分但 interaction 掉到 55%;Joint Modeling OOD transit 掉到 0-5/10 但 interaction(初始化到目标附近)能 10/10。证明瓶颈互补——一个死于探索一个死于精度,简单融合不行。这个 motivation 直接驱动了双 expert + 门控的整个设计。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "世界模型预训练 + 两阶段 finetune",
+      "problem_it_solves": "Wan2.2-TI2V-5B 是通用视频模型,缺机器人物理先验;且要避免 stage2 训 expert 时破坏世界模型",
+      "how": "Stage1:把 Wan2.2-TI2V-5B 在 ~1.9M 机器人轨迹(DROID+AgiBot+RoboMIND+闭源)上预训练注入物理先验,再用自采集件全参 flow matching finetune。Stage2:冻结世界模型,只训两个 expert + 门控,用世界模型产出的显式视频和隐式 latent 作条件。predictive 用 diffusion denoising loss、reactive 用 Smooth L1(β=0.1)、gate 用 BCE。",
+      "why_it_works": "两阶段让世界模型先学通用机器人动态再冻结保稳定,expert 在固定条件下学专门化能力。λ_react=0.1、λ_gate=0.05 的权重让 predictive 的 diffusion loss 主导(它管最难的 interaction),reactive 和 gate 作辅助。这是把'通用世界模型 + 专门化 expert'范式工程化的标准做法。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "ID 平均成功率(6 任务)",
+      "value": "89%",
+      "baseline_best": "78% (Cosmos-Policy) / 74% (π0.5) / 67% (Wan+AnyPos)",
+      "setup": "4 单臂 + 2 双臂 Franka FR3,每任务 20 episodes"
+    },
+    {
+      "metric": "OOD 平均成功率(3 档 × 6 任务)",
+      "value": "82%",
+      "baseline_best": "53% (Wan+AnyPos) / 49% (π0.5) / 44% (Cosmos-Policy)",
+      "setup": "unseen background/position/objects"
+    },
+    {
+      "metric": "OOD 相对最强 baseline 提升",
+      "value": "+33% vs 最强 VLA / +29% vs 最强 WAM",
+      "baseline_best": "—",
+      "setup": "论文 abstract 声称的 OOD 平均优势"
+    },
+    {
+      "metric": "ID 单臂 stage-wise 平均",
+      "value": "91%",
+      "baseline_best": "81% (Cosmos-Policy)",
+      "setup": "4 单臂任务 stage-wise"
+    },
+    {
+      "metric": "ID 双臂 stage-wise 平均",
+      "value": "85%",
+      "baseline_best": "73% (Cosmos-Policy)",
+      "setup": "2 双臂任务 stage-wise"
+    },
+    {
+      "metric": "Unseen Position OOD 平均(最难档)",
+      "value": "80%",
+      "baseline_best": "32% (π0.5) / 26% (Cosmos-Policy)",
+      "setup": "空间不相交区域"
+    },
+    {
+      "metric": "Action 生成频率",
+      "value": "48 Hz(H=12 chunk)",
+      "baseline_best": "—",
+      "setup": "世界模型 5 步去噪"
+    },
+    {
+      "metric": "门控分类准确率",
+      "value": "96.95%",
+      "baseline_best": "—",
+      "setup": "1637 测试帧对,offline 评测"
+    },
+    {
+      "metric": "去噪步数消融(5步 vs 50步)",
+      "value": "85% @5步 / 87% @50步",
+      "baseline_best": "80% @3步",
+      "setup": "Put Flowers in Vase,频率 5步4Hz / 50步3Hz"
+    }
+  ],
+  "insights": [
+    "WAM 的两条旧路线不是工程优劣而是结构性 trade-off(Table 1):Imagine-then-Execute 死于 IDM 精度(只看像素),Joint Modeling 死于 SFT 分布锁死探索。统一需要分工不是折中——让世界模型的隐含 latent 管精度、显式未来管泛化(p4-p5)。",
+    "门控必须阶段感知硬路由,不能平均:Figure 5b 证明 Averaging 在 position OOD 掉 46%,因为两个 expert 在错误阶段发力会互相干扰;门控让 reactive 只在 transit 发力、predictive 只在 interaction 发力,各自在擅长的阶段不被对方稀释(p9)。",
+    "世界模型的隐含 latent 比显式视频更关键:Figure 5c 去掉 latent,predictive ID 从 95% 掉到 62%(掉 33 个点),reactive 掉到 65%。说明时序相干的隐含表征才是精细操作的核心,显式视频更多服务于泛化导航(p9)。",
+    "OOD 的瓶颈是 transit 不是 interaction:Table 1 Joint Modeling 在 OOD transit 掉到 32%,但 interaction(初始化到目标附近)能 95%。这解释了为什么 HarmoWAM 用 reactive expert(借世界模型泛化)专门补 transit——它精准命中了失败根因(p4)。",
+    "5 步去噪是 quality-speed 甜点(Table 9):3步80%→5步85%→10步85%→50步87%,边际递减明显。这说明世界模型的视频质量只要'够用'(关键动作阶段和物体位置清晰)就行,不必追求高保真——给后续 WAM 工程化一个重要参考(p23)。"
+  ],
+  "novelty_vs_peers": [
+    "vs DreamZero(单 expert joint WAM):DreamZero 用单一 AR DiT 联合出 video+action,靠 video-action 对齐拿精度;HarmoWAM 拆成双 expert + 门控,承认单一 expert 难同时拿泛化和精度。DreamZero 强在长上下文闭环 KV-cache(6.6s),HarmoWAM 强在阶段感知分工——两个解决 WAM 不同维度的方案。",
+    "vs Cosmos-Policy(joint latent WAM):Cosmos 把 action 编码成 latent 帧和视频一起去噪,HarmoWAM motivation 实验证明这类 Joint Modeling OOD transit 掉到 26%。HarmoWAM 用 reactive expert 借世界模型显式预测跳出 SFT 分布,是针对 Cosmos 弱点的直接补丁。",
+    "vs Wan+AnyPos(imagine-then-execute):用 Wan2.2 生成视频 + AnyPos 做 IDM,HarmoWAM motivation 证明它 interaction OOD 掉到 55%。HarmoWAM 的 predictive expert 借隐含 latent 而非纯像素,拿到时序相干的精度——是 IDM 路线的精度增强版。",
+    "vs VPP(video feature condition policy):VPP 用视频 diffusion 的中间特征条件化一个 diffusion policy head,本质是单 expert 的 Joint Modeling 变体。HarmoWAM 多了门控和 reactive expert,在双臂任务上 VPP 不可比(论文未报),单臂 HarmoWAM 89% vs VPP 73%。"
+  ],
+  "limitations": [
+    "论文自承:世界模型固定生成 horizon(13 帧),下游任务必须保同样的未来视频 horizon 才能对齐其学到的时空动态,限制了适应不同时间尺度任务的灵活性(p25 Appendix I)。",
+    "论文自承:pixel 级未来生成带来不必要的生成开销,未来要探索 latent 级预测表征做更高效的下游 action 生成(p25 Appendix I)。",
+    "论文自承:三类失败(Tilted stacking / Insertion misalignment / Zipper grasp slip)都是精度/硬件极限,第三人称视角对前后位移小偏移不敏感、UMI gripper 摩擦力不足(p23-p24 Figure 11)。",
+    "我们读出:门控是硬二选一(s_t>0.5),没有混合/平滑过渡,在阶段边界附近可能抖动切换;论文未给门控在边界帧的稳定性分析。",
+    "我们读出:世界模型只用一路视角生成视频,其它视角喂 expert——多视角融合在特征层而非世界模型层,可能丢失部分空间信息;论文未做'世界模型用多视角'的对照。",
+    "我们读出:所有 baseline 都在同一自采数据上 finetune,但 Wan+AnyPos 的 AnyPos 是 from scratch 训的(其它用预训练 checkpoint),baseline 之间预训练基础不完全对齐,公平性有细微偏差(p16)。",
+    "我们读出:96.95% 门控准确率是离线评测,实际闭环时门控基于实时观测,若观测因 OOD 退化门控可能误判阶段——论文未给门控在 OOD 下的准确率。"
+  ],
+  "reproducibility": {
+    "code": "https://elbb-yu.github.io/HarmoWAM/(project page)",
+    "weights": "未明确开源权重(仅 project page)",
+    "hardware": "Franka FR3 单/双臂 + UMI gripper + 3× Intel RealSense(D435/D455)",
+    "training": "8× NVIDIA H20 GPU",
+    "real_eval": "6 真实任务 × 20 episodes/任务,3 档 OOD"
+  },
+  "tags": [
+    "WAM",
+    "hybrid expert",
+    "process-adaptive gating",
+    "Wan2.2",
+    "diffusion policy",
+    "inverse dynamics",
+    "Franka",
+    "OOD generalization",
+    "PKU"
+  ]
+}

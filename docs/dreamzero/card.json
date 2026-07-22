@@ -1,0 +1,379 @@
+{
+  "slug": "dreamzero",
+  "title": "World Action Models are Zero-shot Policies",
+  "authors": [
+    "Seonghyeon Ye",
+    "Yunhao Ge",
+    "Kaiyuan Zheng",
+    "Shenyuan Gao",
+    "Linxi \"Jim\" Fan",
+    "Joel Jang",
+    "et al."
+  ],
+  "affiliation": "NVIDIA",
+  "arxiv": "2602.15922",
+  "date": "2026-02-19",
+  "venue": "arXiv preprint (NVIDIA)",
+  "category": "Joint WAM",
+  "one_liner": "把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。",
+  "problem": {
+    "what_they_address": "现有 VLA 只能在语义层泛化(换物体、换指令),但换一个没见过的动作/技能(如未训练过的解鞋带)就失败。作者要解决的是:如何让机器人策略真正泛化到未训练过的 motion 和 environment,同时能利用异质、非重复的真实数据。",
+    "why_prior_work_falls_short": "VLA 从 VLM 初始化,继承了 web 的语义先验,但没有继承物理动态先验——它学到的是 observation->action 的映射,缺'动作会让世界怎么变'的建模。所以它必须靠大量重复示教覆盖每个技能。之前的 WAM(如 BagelVLA、Cosmos-Policy)虽然用了 video diffusion,但要么只做关键帧/cascaded,要么没解决实时推理,要么没系统验证数据多样性与跨本体迁移。"
+  },
+  "inputs_outputs": {
+    "inputs": [
+      {
+        "name": "visual context",
+        "type": "image/video",
+        "detail": "当前与历史观测;多视角在通道维拼接为单帧;经 VAE 编码为 latent"
+      },
+      {
+        "name": "language instruction",
+        "type": "text",
+        "detail": "经文本编码器(训练时冻结)编码为条件"
+      },
+      {
+        "name": "proprioceptive state",
+        "type": "vector",
+        "detail": "本体感受状态,经 state encoder(新增模块)编码"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "future video latents",
+        "type": "latent",
+        "detail": "未来 K=2 个 latent 视频帧(每 chunk)"
+      },
+      {
+        "name": "action chunk",
+        "type": "continuous",
+        "detail": "H=48 (AgiBot, 30Hz) 或 H=24 (DROID, 15Hz) 步连续动作,表示为相对关节位置"
+      }
+    ],
+    "control_frequency": "推理 ~7Hz(150ms/chunk);AgiBot 控制频率 30Hz、chunk 跨度 1.6s;DROID 15Hz、chunk 同样 1.6s",
+    "concat_protocol": "<bos_context>[VAE(o_{1:M}) = (C_1, A_1), ..., (C_{k-1}, A_{k-1})]<eos_context><bos_lang>TextEnc(c)<eos_lang><bos_state>StateEnc(q_k)<eos_state><bos_chunk>[noisy z_k^t, noisy a_k^t]<eos_chunk>\n\n逐 token 解释:\n- <bos_context>...<eos_context>:历史 chunk 序列;训练时是 clean teacher-forcing context {(z_j, a_j)}_{j<k},每个 chunk 含 K=2 video latent 帧 + 对应 action latent;推理时前若干 chunk 的 KV-cache 已被真实观测替换\n- <bos_lang>...<eos_lang>:语言指令 c 经冻结的 text encoder,以 cross-attention 注入每个 DiT block(不是序列拼接)\n- <bos_state>...<eos_state>:当前 chunk k 的 proprioceptive state,经新增 state encoder\n- <bos_chunk>...<eos_chunk>:当前要联合去噪的 [video latent z_k^t, action latent a_k^t];z 是 Wan-VAE latent(空间 104×60,channel 16,时间 K=2),a 是归一化连续动作;两者共享 timestep t_k,联合预测 velocity v_k = [z_k^1, a_k^1] - [z_k^0, a_k^0]\n\n注意:多视角在图像层就已在通道维拼成单帧再过 VAE,不是序列拼接;text 是 cross-attention 而非 token 拼接;真正做序列拼接的是 chunk 级的 [video, action] 对。"
+  },
+  "datasets": [
+    {
+      "name": "AgiBot G1 自采(主)",
+      "size": "~500h",
+      "note": "7193 episodes,22 个真实环境(家、餐厅、超市、咖啡店、办公室),平均 4.4 分钟/episode、42 subtasks/episode,强调多样非重复"
+    },
+    {
+      "name": "DROID",
+      "size": "公开数据集",
+      "note": "Franka 单臂,用于验证方法在开源异质数据上同样有效,并保证可复现"
+    },
+    {
+      "name": "YAM robot video-only",
+      "size": "20 min",
+      "note": "72 轨迹/9 任务,robot-to-robot 跨本体迁移,只用视频不用动作标签"
+    },
+    {
+      "name": "Human egocentric video-only",
+      "size": "12 min",
+      "note": "72 轨迹/9 任务,human-to-robot 跨本体迁移,只用视频"
+    },
+    {
+      "name": "Post-training data",
+      "size": "33h+12h+40h",
+      "note": "叠衣服/水果打包/收餐桌三个下游任务微调"
+    }
+  ],
+  "architecture": {
+    "backbone": "Wan2.1-I2V-14B-480P(image-to-video diffusion, 14B)",
+    "params": "14B(冻结 text encoder / image encoder / VAE;更新 DiT + 新增 state/action encoder/decoder)",
+    "type": "autoregressive DiT + flow matching(chunk-wise, teacher forcing)",
+    "key_components": [
+      "VAE:把图像/视频编码到 latent(冻结,继承自 Wan2.1)",
+      "Text encoder:编码语言指令(冻结)",
+      "State encoder:把本体感受编码(新增,最小参数)",
+      "Action encoder/decoder:把连续动作进出 latent(新增,最小参数)",
+      "Autoregressive DiT 主干:对 [video latent, action latent] 联合做 flow-matching 去噪,chunk 间 teacher forcing,KV-cache 推理",
+      "多视角处理:把多个视角在通道维拼成一帧,不改 backbone"
+    ],
+    "why_this_design": "保留 video diffusion 的物理先验(只动最小参数);AR 结构能保原生帧率、避免双向模型因 subsample 造成 video-action 错位;chunk-wise + KV-cache 让长上下文(6.6s)一次前向搞定;闭环时用 GT 观测替换 KV-cache 里的预测帧,消除 AR 的误差累积——这是 WAM 相对纯视频生成的独有优势。",
+    "numerical_sense": {
+      "dit": "14B, hidden_dim=5120, 40 layers × 40 heads, ffn_dim=13824",
+      "resolution": "480P (面积固定,宽高比随输入,典型 832×480)",
+      "vae": "Wan 3D causal VAE; 空间 8× 下采样 (832×480→104×60), 时间 4× 下采样 (4 raw 帧→1 latent 帧), latent channel=16",
+      "per_frame_latent_dim": "~104×60×16 ≈ 1.0e5 维/latent 帧",
+      "chunk": "K=2 latent 帧 = 8 raw 帧; 视频 5FPS → 1.6s/chunk; AgiBot: 动作 30Hz/H=48, DROID: 动作 15Hz/H=24",
+      "context": "M=4 chunks = 8 latent 帧 = 33 raw 帧 = 6.6s 视觉记忆",
+      "action": "连续相对关节位置; AgiBot G1 双臂移动平台(自由度~十几到二十几), DROID Franka 7-DOF+夹爪",
+      "training": "100K steps × global batch 128 (AgiBot 与 DROID 都是); 全参数更新 (LoRA 试过不行); 冻结 text/image encoder + VAE"
+    },
+    "see": "architecture.md"
+  },
+  "figures": [
+    {
+      "id": "Figure 1",
+      "page": 1,
+      "title": "Overview 四大卖点",
+      "caption_original": "By jointly predicting video and action, WAMs inherit world physics priors that enable 1) effective learning from diverse, non-repetitive data, 2) open-world generalization, 3) cross-embodiment learning from video-only data, and 4) few-shot adaptation to new robots.",
+      "what_it_shows": "门面图。多种数据源(双臂/单臂/人类第一视角/纯视频/语言/proprio)汇入中间的 DreamZero WAM;下方分别展示 30min play data few-shot 适配新本体、和 zero-shot 泛化到未见任务(解鞋带/按电梯/放橙子进南瓜)。核心信息:WAM 已经能直接当 policy 用,做零样本策略,且能从异质无动作标签数据学。",
+      "image_path": "figures/p01.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 2",
+      "page": 3,
+      "title": "Video-Action 对齐(成功案例)",
+      "caption_original": "DreamZero jointly generates video and action. Predicted actions closely align with the generated video. Examples from totally unseen tasks.",
+      "what_it_shows": "上行为模型生成的未来视频,下行为实际执行,帧对帧吻合(任务:用锅铲炒蔬菜,训练未见)。支撑核心论断:失败主要来自 video 预测错,不是 action 提取错——说明 video 和 action 对齐很紧。",
+      "image_path": "figures/p03.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 3",
+      "page": 4,
+      "title": "Free-form 自由测试",
+      "caption_original": "DreamZero performs a diverse range of tasks when conditioned on natural language instructions, including object manipulation, tool use, and human-robot interaction.",
+      "what_it_shows": "18 个自由测试任务的可视化清单(叠碗/扔垃圾/抽牌/双手交接/递工具给人/擦白板/拔电缆/碰拳等)。强调不是在固定任务集过拟合,能跟随自然语言做没见过的操作。100+ 自由测试任务里挑出来的。",
+      "image_path": "figures/p04.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 4",
+      "page": 6,
+      "title": "Model Architecture(最重要)",
+      "caption_original": "Three inputs: visual context (VAE), language (text encoder), proprio (state encoder). Autoregressive DiT with flow matching jointly predicts video and action. Training: teacher forcing on noisy chunk conditioned on clean context. Inference: GT observations fed back into KV cache to prevent error accumulation.",
+      "what_it_shows": "全文最该看的图。左训练:三路输入→AR DiT(flow matching)→video/action 两路输出,前 chunk clean latent 作上下文,对当前 chunk 的 noisy [z_t,a_t] 联合去噪。右推理:chunk 执行后真实观测回填 KV-cache 替换预测帧,下个 chunk 基于真实上下文生成。同时回答输入怎么拼、video-action 怎么联合、闭环怎么消误差。",
+      "image_path": "figures/p06.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 5",
+      "page": 9,
+      "title": "Flash 解耦 noise schedule",
+      "caption_original": "DreamZero (blue) uses coupled uniform noise. DreamZero-Flash (red) biases video toward high-noise via Beta(7,1) while keeping action uniform, training to predict clean actions from noisy visual context.",
+      "what_it_shows": "两子图:video timestep 和 action timestep 采样分布。蓝(标准)都 U(0,1);红(Flash)video 偏高噪声 Beta(7,1) E[t]=0.125,action 仍均匀。设计动机:1-step 推理时 video 还很脏但 action 要从干净 video 读条件——训练时让模型见惯'video 脏时也输出干净 action'。这是 Flash 把 1 步从 52% 拉到 74% 的关键。",
+      "image_path": "figures/p09.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 6",
+      "page": 11,
+      "title": "AgiBot 数据统计",
+      "caption_original": "Distribution statistics for the AgiBot pretraining corpus: episode durations, subtask density, and skill coverage across 7.2K episodes (~500 hours).",
+      "what_it_shows": "三子图。(a) episode 时长:7193 个,均 4.4min,长尾到 10min+。(b) 每 episode 子任务数:均 42.4,有的 100+。(c) 技能分布:导航/躯干调整/抓放/工具使用占比。支撑'数据多样性>重复性'——这些 episode 是长程多子任务跨环境真实部署式采集,和'一个任务重复 100 次'完全不同。",
+      "image_path": "figures/p11.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 7",
+      "page": 12,
+      "title": "评测协议",
+      "caption_original": "First-citizens of generalization evals: default setting is unseen environment and unseen objects.",
+      "what_it_shows": "训练地与评测地不同地理位置,默认评测即 OOD(unseen env+obj)。三档任务:seen(训练有类似动作,如换颜色叠衣)/unseen(动作完全没见过,如解鞋带/熨衣)/post-training 下游(叠衣/水果打包/收餐桌)。定义了论文所有结果的评测口径——unseen env+obj 是底线不是加分项。",
+      "image_path": "figures/p12.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 8",
+      "page": 13,
+      "title": "Seen Task 结果",
+      "caption_original": "DreamZero effectively learns from diverse data and generalizes to new environments, outperforming VLAs across all task categories. VLAs trained from scratch achieve near-zero success.",
+      "what_it_shows": "分组柱状图,三档任务(PnP Easy/Hard/Contact-Rich)× 5 checkpoint。AgiBot DreamZero 均 62.2%,最好 pretrained VLA 27.4%,scratch VLA≈0。回答 Q1:WAM 能从异质非重复数据学,VLA 不能——即使 VLA 在数千小时跨本体数据预训练过。",
+      "image_path": "figures/p13.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 9",
+      "page": 14,
+      "title": "Unseen Task 结果",
+      "caption_original": "DreamZero achieves non-trivial task progress on 10 tasks absent from training, while VLAs struggle across both embodiments.",
+      "what_it_shows": "10 个训练完全没出现的任务(解鞋带/摘帽/画画/握手/拉车等)。AgiBot DreamZero 39.5%,pretrained VLA 16.3%;DROID success rate DreamZero 22.5%,GR00T 12.5%,π0.5 7.5%。关键观察:pretrained VLA 不管指令都倾向抓物体——过拟合到 pick-and-place,不理解新任务语义;DreamZero 能做视觉规划并执行。",
+      "image_path": "figures/p14.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 10",
+      "page": 15,
+      "title": "Post-training 结果",
+      "caption_original": "WAMs enable stronger post-training results across three tasks, indicating environment generalization of DreamZero is retained after post-training.",
+      "what_it_shows": "三个下游任务(叠衣 33h/水果打包 12h/收餐桌 40h)post-training 结果。DreamZero 叠衣和收餐桌持平或略胜 pretrained VLA,水果打包明显胜出(76% vs 56%)。post-training 仍在 unseen 环境评测,说明 DreamZero 环境泛化能力 fine-tune 后没丢——WAM 的隐性优势。",
+      "image_path": "figures/p15.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 11",
+      "page": 15,
+      "title": "Cross-Embodiment 跨本体迁移",
+      "caption_original": "Robot-to-robot (YAM → AgiBot) and human-to-robot embodiment transfer to unseen tasks.",
+      "what_it_shows": "两设置:Robot2Robot 用 YAM 双臂 video-only(20min,无动作标签)共训;Human2Robot 用人类第一视角视频(12min,无动作标签)共训。两条都让 unseen tasks 从 38.3% 涨到 54%+。关键:WAM 能用无动作标签视频增益 policy——video prediction objective 本身强化 world model 对任务动态的理解,不需 action。打开人类视频 scaling 路径。",
+      "image_path": "figures/p15.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 12",
+      "page": 16,
+      "title": "Few-shot 新本体适配",
+      "caption_original": "Few-shot embodiment adaptation by post-training on 30 minutes of new embodiment play data, evaluating on pick-and-place variants requiring strong language following.",
+      "what_it_shows": "AgiBot 上训好的 checkpoint 用 55 轨迹(~30min)YAM play data post-train,迁移到全新本体 YAM,保留 zero-shot 泛化(能处理南瓜/泰迪熊/笔/杯面/纸袋等未见物体)。论文称数据效率新标杆。机制假设:学的是 implicit IDM(从视觉未来反推动作),比直接 policy learning 更 sample-efficient。",
+      "image_path": "figures/p16.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 13",
+      "page": 20,
+      "title": "为什么 AR 不选 bidirectional",
+      "caption_original": "When sampling point falls mid-task (T=20), bidirectional WAMs must subsample video to align with language caption, distorting native FPS and degrading video-action alignment. AR avoids this by conditioning on video context.",
+      "what_it_shows": "双向模型要求固定长度。不 subsample,生成视频只覆盖任务片段,语言视频错位(mismatch 1/2);subsample 到任务区间,从任务中段(T=20)采样会扭曲原生帧率,video-action 对齐崩(mismatch)。AR 用视频上下文做条件,既保语言-视频对应又保原生帧率。这是 DreamZero 选 AR 的根本理由。",
+      "image_path": "figures/p20.png",
+      "importance": "key"
+    },
+    {
+      "id": "Figure 14",
+      "page": 21,
+      "title": "Attention mask 细节",
+      "caption_original": "(a) QKV self-attention mask for training: given C0/C1/C2 conditioning, predict velocities of Z1/Z2/Z3 and Y1/Y2/Y3. (b) Inference: KV-cache of conditional frames concatenated; C0/C1/C2 during inference replaced with GT observations.",
+      "what_it_shows": "对应 chunk-wise teacher forcing 和 KV-cache 推理。训练下三角 mask 保证当前 chunk 能 attend 前面所有 clean context 但不看未来。推理 C0/C1/C2 换成 GT 观测,KV-cache 复用,Y3 能 attend C0/C1/C2——这就是'闭环用真实观测替换预测帧'的实现。是 Figure 4 推理部分的细节展开。",
+      "image_path": "figures/p21.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 15",
+      "page": 25,
+      "title": "数据采集环境",
+      "caption_original": "22 diverse real-world environments: offices, laboratories, restaurants, supermarkets, coffee shops, warehouses, homes, hotels.",
+      "what_it_shows": "22 个真实数据采集环境照片网格。是'数据多样性'的视觉证据,和 Figure 6 配合:Figure 6 给统计数字,Figure 15 给环境多样性证据。是 DreamZero 反直觉结论'多样性>重复性'的数据基础。",
+      "image_path": "figures/p25.png",
+      "importance": "supportive"
+    },
+    {
+      "id": "Figure 16",
+      "page": 29,
+      "title": "失败也对齐(关键 insight)",
+      "caption_original": "Generated video and action execution pair. Two examples where video prediction failed and robot followed the failed prediction faithfully.",
+      "what_it_shows": "两个失败案例。上行为模型生成的未来视频,下行为实际执行。模型生成的视频错了(如动作方向预测反),机器人忠实执行了错误轨迹。反向证明 action 和 video 对齐很紧——失败主要来自 video 预测错,action 提取本身没问题。这是论文最有力论断之一:'改进 policy 等价于改进 video backbone'。",
+      "image_path": "figures/p29.png",
+      "importance": "key"
+    }
+  ],
+  "key_techniques": [
+    {
+      "name": "Joint video-action flow matching(端到端联合去噪)",
+      "problem_it_solves": "video 和 action 怎么对齐,而不是两个 head 各做各的",
+      "how": "单一模型对 [z_t, a_t] 联合预测 velocity v=[z_1, a_1] - [z_0, a_0]。训练时 chunk 内共享 timestep t_k,video 和 action 同步插值;chunk 间用 teacher forcing(前 chunk 的 clean latent 作为上下文)。",
+      "why_it_works": "作者相信端到端比 decomposed(video model + IDM 两阶段)对齐更好。关键证据:失败主要来自 video 预测错,而不是 action 提取错——说明 action 已经紧紧贴住 video,模型忠实执行 video 描述的轨迹。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Autoregressive + KV-cache 闭环",
+      "problem_it_solves": "diffusion 模型推理慢,且 AR 视频生成有误差累积",
+      "how": "训练用 chunk-wise(K=2 latent 帧/chunk, M=4 chunks, 共 8 latent 帧=33 raw 帧=6.6s 上下文)。推理时先 prefill context 的 KV-cache,然后逐 chunk 生成;每个 chunk 执行后,把真实观测的 KV 替换掉预测的 KV,继续下一 chunk。",
+      "why_it_works": "闭环设置让 GT 观测不断纠正 cache,消除了纯 AR 视频生成的 compounding error——这是 WAM 作为 policy 而非视频生成器的根本不同。同时 KV-cache 让长上下文只需一次前向,推理比双向快 3-4x。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "DreamZero-Flash:解耦 noise schedule 实现单步推理",
+      "problem_it_solves": "few-step/single-step 推理时,video 还没去噪干净,action 却要从干净的 video 读条件,造成 train-test mismatch",
+      "how": "训练时 video timestep 偏向高噪声:t_vid = 1 - eta, eta~Beta(7,1),E[t_vid]=0.125(主要在噪声大的状态);action timestep 仍 uniform。让模型学'在 video 还很噪的情况下预测干净 action',直接匹配单步推理的真实条件。",
+      "why_it_works": "把 4 步降到 1 步,table bussing 任务进度从 52%(普通 1 步)恢复到 74%(Flash 1 步),只比 4 步 baseline(83%)低 9 个点,速度 2.33x。这是论文里最聪明的一个工程 trick。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "系统级 + 实现级优化叠加",
+      "problem_it_solves": "14B DiT + 16 步 diffusion 单卡 5.7s,远超闭环可接受",
+      "how": "CFG 双卡并行(-47%)、DiT caching(速度方向相似时复用,16 步有效降到 4 步)、torch.compile+CUDA Graphs、NVFP4 量化(Blackwell,sensitive 层保 FP8/FP16)、cuDNN attention + GPU 化 scheduler。",
+      "why_it_works": "叠加后 H100 9.6x、GB200 16.6x,再加 Flash 共 38x,把 5.7s 压到 150ms,达到 7Hz。",
+      "detail_level": "deep"
+    },
+    {
+      "name": "Cross-embodiment:video-only 共训 + few-shot 新本体适配",
+      "problem_it_solves": "如何用其他机器人或人类的视频(没有动作标签)增强当前机器人,以及如何快速迁移到全新本体",
+      "how": "跨本体数据只用 video prediction objective(不用 action),与 AgiBot 的 joint video-action 数据 1:1 共训 10K 步。few-shot 适配:用 55 轨迹(~30min)YAM play data post-train 已有的 AgiBot checkpoint。",
+      "why_it_works": "video-only 数据强化了 world model 对任务动态的理解,不需要 action 标签。few-shot 能成功是因为学到的是 implicit IDM(从视觉未来到动作),比直接 policy 更 sample-efficient。",
+      "detail_level": "deep"
+    }
+  ],
+  "key_results": [
+    {
+      "metric": "Seen tasks avg task progress",
+      "value": "62.2%",
+      "baseline_best": "27.4% (best pretrained VLA)",
+      "setup": "AgiBot G1, unseen env+objects"
+    },
+    {
+      "metric": "Unseen tasks avg task progress",
+      "value": "39.5%",
+      "baseline_best": "16.3% (pretrained VLA)",
+      "setup": "AgiBot G1, 10 个训练中未出现的任务"
+    },
+    {
+      "metric": "Unseen tasks success rate",
+      "value": "22.5%",
+      "baseline_best": "12.5% (GR00T N1.6 pretrained)",
+      "setup": "DROID-Franka"
+    },
+    {
+      "metric": "Cross-embodiment (Robot2Robot)",
+      "value": "55.4% (从 38.3% 提升)",
+      "baseline_best": "—",
+      "setup": "20min YAM video-only"
+    },
+    {
+      "metric": "Cross-embodiment (Human2Robot)",
+      "value": "54.3% (从 38.3% 提升)",
+      "baseline_best": "—",
+      "setup": "12min human egocentric video-only"
+    },
+    {
+      "metric": "Few-shot 新本体适配",
+      "value": "30min play data 迁移到 YAM 并保留 zero-shot 泛化",
+      "baseline_best": "—",
+      "setup": "55 轨迹/11 任务"
+    },
+    {
+      "metric": "Inference latency",
+      "value": "150ms (7Hz)",
+      "baseline_best": "5.7s (naive)",
+      "setup": "GB200, 全部优化 + Flash"
+    },
+    {
+      "metric": "Flash 1-step vs 4-step",
+      "value": "74% task progress (1 step)",
+      "baseline_best": "83% (4 step) / 52% (naive 1 step)",
+      "setup": "Table bussing"
+    }
+  ],
+  "insights": [
+    "WAM 把 policy 学习从 'observation->action 的稠密模仿' 转成 'inverse dynamics'——动作不再从头学,而是从预测的视觉未来里提取。这是它能用异质、非重复数据而 VLA 不能的根本原因(p3)。",
+    "失败主要来自 video 预测错,而不是 action 提取错——意味着改进 video backbone 会直接转化成 policy 改进(p13)。这是 WAM 路线最有力的 scaling 论证。",
+    "数据多样性 > 数据重复性:同样 500h,diverse 比 repetitive 在 PnP Easy 上从 33% 到 50%(p17)。这颠覆了 VLA 时代'每个任务多重复'的直觉。",
+    "WAM 对模型规模更敏感:14B vs 5B 在 PnP Easy 是 50% vs 21%,小模型会视觉幻觉传导到动作;而 VLA 即使放大到 14B 在 diverse data 上仍是 0%(p17)。",
+    "闭环用 GT 观测替换 KV-cache 里的预测帧,消除了 AR 视频生成的 compounding error——这是 WAM 作为 policy 比纯视频生成强的地方,也是它能做实时控制的关键(p6)。"
+  ],
+  "novelty_vs_peers": [
+    "vs Cascaded WAM(如 BagelVLA):BagelVLA 先预测关键帧再生成 action,DreamZero 是 joint 端到端,video-action 对齐更紧;且 BagelVLA 的 RFG 1.23s/chunk,DreamZero 150ms。",
+    "vs Modular MPC(如 Cosmos-Policy):Cosmos 用 world rollout + value scoring + MPC 做决策时规划,DreamZero 不做 test-time search,直接 joint 出 action,因此能 7Hz 而不是被候选数/rollout horizon 拖慢。",
+    "vs 之前的 video-action joint 工作(如 UniPi 类):DreamZero 系统验证了 AR 架构、数据多样性、跨本体迁移,并第一次把 14B video diffusion 压到实时闭环;之前的工作大多停在仿真或非实时。",
+    "vs latent world model(如 V-JEPA2/Dreamer):latent 模型建模 p(s_{t+1}|s_t,a_t) 是前向动力学,部署需要 goal-conditioned planning 或搜索;WAM 直接建模 p(o,a|history) 一次性出动作,不需要 test-time 优化,所以能实时。"
+  ],
+  "limitations": [
+    "论文自承:仍是 System 1,视觉记忆只有 6.6s,长程推理需要 System 2 planner 或更长上下文(p18)。",
+    "论文自承:高精度任务(亚厘米级,如钥匙插入、精密装配)仍是 behavior cloning 的通病,diverse pretraining 反而稀释了这类密集示教(p18)。",
+    "论文自承:比 consumer GPU 上的 VLA(20Hz+)仍贵,7Hz 依赖 2x GB200;小 video backbone 是否保泛化未知(p18)。",
+    "论文自承:跨本体迁移成功率仍 moderate,只是 'early signal',需要更大规模人类视频验证(p16)。",
+    "我们读出:跨本体实验里 YAM 和 AgiBot 都是双臂 parallel gripper,形态接近,迁移收益部分来自此;人类视频收益是否在形态差异更大时仍成立,论文未证。",
+    "我们读出:所有结果都是 unseen env+objects,但 task 维度上'seen'和'unseen'的边界依赖人工定义(动作+物体类型),有主观空间。",
+    "我们读出:38x 加速里有几项(DiT caching、NVFP4 量化)不是数学等价,论文说'minimal quality loss'但未给完整精度对照。"
+  ],
+  "reproducibility": {
+    "code": "https://github.com/dreamzero0/dreamzero",
+    "weights": "开源(论文声明)",
+    "sim_benchmark": "PolaRiS 与 Genie Sim 3.0",
+    "real_eval": "AgiBot G1(4 台机器人) + Franka(DROID)"
+  },
+  "tags": [
+    "WAM",
+    "video diffusion",
+    "autoregressive",
+    "flow matching",
+    "cross-embodiment",
+    "KV-cache",
+    "NVIDIA",
+    "joint world-action"
+  ]
+}

@@ -1,0 +1,19 @@
+# 大文件 / 中间产物，不提交
+extracted/
+*.pyc
+__pycache__/
+.DS_Store
+
+# 音频中间文件不提交，但 docs/*/audio/podcast.mp3 要提交（Pages 播放需要）
+papers/*/audio/
+docs/*/audio/segments/
+docs/*/audio/concat.txt
+docs/*/audio/silence_*.mp3
+
+# 旧项目目录（迁移遗留）
+tasks/
+journal/
+
+# source.pdf 用 arXiv 链接，不提交（dreamzero 例外已入库）
+papers/*/source.pdf
+docs/*/source.pdf

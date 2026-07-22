@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities</title>
+<style>
+:root {
+  --bg:#fafbfa; --paper:#fff; --ink:#17201c; --muted:#65706b;
+  --faint:#8b9690; --line:#dfe6e2; --accent:#0f766e; --accent2:#8a5a00;
+  --soft:#eaf5f2; --warn:#fff7e6; --danger:#9f2f2f; --dark:#111614;
+  --code-bg:#1e2622; --code-fg:#e8f1ee;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  line-height:1.7; }
+header.top { background:var(--dark); color:#e8f1ee; padding:28px 40px; }
+header.top .back-home { display:inline-block; color:#5eead4; text-decoration:none;
+  font-size:14px; font-weight:600; margin-bottom:14px; }
+header.top .back-home:hover { text-decoration:underline; }
+header.top h1 { margin:0 0 8px; font-size:26px; line-height:1.3; }
+header.top .meta { color:#9fb3ac; font-size:14px; }
+header.top .meta a { color:#5eead4; }
+header.top .links { margin-top:14px; display:flex; gap:18px; flex-wrap:wrap; }
+header.top .links a { color:#5eead4; text-decoration:none; font-size:14px;
+  border:1px solid #2a3934; padding:6px 12px; border-radius:6px; }
+header.top .links a:hover { background:#1e2622; }
+nav.tabs { background:var(--paper); border-bottom:1px solid var(--line);
+  padding:0 40px; position:sticky; top:0; z-index:10; display:flex; gap:4px; }
+nav.tabs button { background:none; border:none; border-bottom:3px solid transparent;
+  padding:16px 18px; font-size:15px; color:var(--muted); cursor:pointer; font-weight:600; }
+nav.tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+main { max-width:1100px; margin:0 auto; padding:32px 40px; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+h2 { border-bottom:2px solid var(--line); padding-bottom:8px; margin-top:36px; }
+h3 { margin-top:28px; }
+h4 { margin-top:20px; color:var(--accent); }
+table.md-table { border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }
+table.md-table th, table.md-table td { border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+table.md-table th { background:var(--soft); color:var(--accent); font-weight:700; }
+table.md-table.numerical td:first-child { font-weight:600; width:140px; color:var(--muted); }
+table.md-table.results td:nth-child(2) { color:var(--accent); }
+pre.code { background:var(--code-bg); color:var(--code-fg); padding:16px 18px;
+  border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.55;
+  font-family:"SF Mono",Menlo,Consolas,monospace; }
+pre.code.protocol { border-left:4px solid var(--accent); }
+.protocol-explain { margin-top:12px; }
+.protocol-explain .proto-item { margin:6px 0; padding-left:14px; border-left:2px solid var(--line); }
+.protocol-explain .proto-note { color:var(--muted); font-size:14px; }
+.figures-grid { display:grid; grid-template-columns:1fr; gap:28px; margin-top:20px; }
+.figure-card { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:20px; }
+.figure-card.badge-key { border-left:4px solid var(--accent); }
+.figure-card.badge-supportive { border-left:4px solid var(--faint); }
+.figure-head { display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+.fig-id { font-weight:700; color:var(--accent); }
+.fig-page { color:var(--muted); }
+.badge { padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; text-transform:uppercase; }
+.badge-key { background:var(--soft); color:var(--accent); }
+.badge-supportive { background:#f0f2f1; color:var(--muted); }
+.figure-card img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:6px; margin:10px 0; }
+.figure-card .caption { color:var(--muted); font-size:13px; }
+.figure-card .whatitshows { margin-top:10px; }
+.arch-prose { max-width:none; }
+.arch-prose pre.code { margin:16px 0; }
+.podcast-prose { max-width:780px; }
+.podcast-prose h2 { color:var(--accent); }
+.podcast-prose pre.code { background:#fff; color:var(--ink); border:1px solid var(--line); }
+.audio-player { background:var(--soft); border:1px solid var(--line); border-radius:10px;
+  padding:18px 22px; margin-bottom:24px; }
+.audio-player h3 { margin:0 0 12px; color:var(--accent); }
+.audio-player audio { display:block; }
+.audio-player .dur { margin:8px 0 0; color:var(--muted); font-size:13px; }
+ul.insights li { margin:8px 0; }
+ul.limitations li { color:var(--muted); }
+.footer { text-align:center; color:var(--faint); padding:40px 20px; font-size:13px; }
+@media (max-width:780px) {
+  main { padding:20px; }
+  header.top { padding:20px; }
+  nav.tabs { padding:0 12px; overflow-x:auto; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back-home" href="../index.html" title="返回首页">← Home</a>
+  <h1>π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities</h1>
+  <div class="meta">
+    Physical Intelligence、Bo Ai、Ali Amin et al. · Physical Intelligence · 2026-04-24 · arXiv:2604.15483
+  </div>
+  <div class="links">
+    <a href="source.pdf" target="_blank">📄 source.pdf</a>    <a href="https://pi.website/pi07(project page,未明确开源代码)" target="_blank">🔗 code</a>    <a href="../../SCHEMA.md" target="_blank">📋 schema</a>  </div>
+</header>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="architecture">Architecture</button>
+  <button class="tab-btn" data-tab="figures">Figures</button>
+  <button class="tab-btn" data-tab="podcast">Podcast</button>
+</nav>
+<main>
+<section class="tab-panel active" id="overview"><p class='one-liner'>一个 5B VLA(4B Gemma3 VLM + 860M flow-matching action expert),靠'把每条轨迹的 episode metadata(速度/质量/是否犯错)+ subtask 指令 + 世界模型生成的 subgoal 图像'塞进 prompt 做条件,从而能把混合质量(含失败、含 RL specialist 蒸馏)的异质数据训成一个会组合泛化的通用 policy,零样本迁移到新任务/新本体/逆数据偏差指令。</p><h2>问题</h2><p><strong>要解决什么</strong>：现有 VLA 用一条语言指令(如 'clean the kitchen')做条件,只能用高质量示教数据。一旦混入失败、低质量、跨策略、跨本体、人类视频、web 多模态这些异质数据,naive 训练会把不同模式平均掉、产出次优行为。作者要解决的是:如何让一个通用 VLA 真正利用这种异质混合数据,同时还能组合泛化到没见过的任务和本体,而不是每个新任务都要 finetune。</p><p><strong>为什么 prior work 不够</strong>：三类 prior work 都不够:(1)经典 VLA(π0/π0.5/π0.6)只吃语言条件,只能用高质量示教,数据多样性受限;(2)跨本体/人类视频/web 数据的工作偏表征学习或动作监督,没解决'同一任务多种策略'的歧义;(3)subgoal image conditioning 工作多用用户给图或单独模型 chain-of-thought,没系统化成训练时多维 context。核心矛盾是:数据要多样,但多样数据若不加标注会把模型训坏——π0.7(no metadata)在更大混合质量数据上反而变差(Fig.18 left),证明不加 context 的 naive scaling 是行不通的。</p><h2>输入 / 输出</h2><h3>输入</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>multi-view observation</td><td>image</td><td>最多 4 路(前视 + 2 腕部 + 可选后视),每路最多 6 个历史帧(stride 1s),resize 448×448,经 MEM vision encoder 做时空压缩</td></tr>
+<tr><td>proprioceptive state</td><td>vector</td><td>机器人关节状态(含历史);π0.7 用 linear projection 映射到 backbone dim(不再像 π0.6 用离散 text token)</td></tr>
+<tr><td>task instruction ℓ</td><td>text</td><td>总任务描述,如 'clean the kitchen'</td></tr>
+<tr><td>subtask instruction ℓ̂</td><td>text</td><td>下一语义子任务,如 'open the fridge door';来自 high-level policy 或人类 coaching,可随时间变</td></tr>
+<tr><td>subgoal images g</td><td>image</td><td>多视角近未来期望图像(最多 3 路,不含后视);由 BAGEL 14B 世界模型生成,描述任务进展后的目标场景</td></tr>
+<tr><td>episode metadata m</td><td>structured</td><td>speed(每 500 步分桶)、quality(1-5 分)、mistake(布尔);训练用 GT+人工标注,推理设 quality=5/mistake=false/speed 按任务 15 分位</td></tr>
+<tr><td>control mode c</td><td>text token</td><td>joint 或 ee(末端),用 text 标识符进 prompt</td></tr>
+</tbody></table>
+<h3>输出</h3><table class='md-table'><thead><tr><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td>action chunk</td><td>continuous</td><td>50 步 action token(joint 或 ee),由 860M action expert 用 flow matching 去噪生成,5 步去噪,实际执行 Ĥ∈{15,25} 步</td></tr>
+</tbody></table>
+<p><strong>控制频率</strong>：UR5e 20Hz,其它机器人 50Hz;action expert 50 步/chunk,5 步去噪;最小变体推理 38ms(3 视角),最坏 127ms(加 MEM+subgoal);世界模型生成 subgoal 1.25s/张(25 步去噪),异步执行不阻塞</p>
+<h3>输入拼接 protocol</h3>
+<pre class="code protocol"><code>&lt;bos_obs&gt;[I1_t...I4_t (448×448, 经 MEM ViT)]...[I1_{t-T}...历史帧, stride 1s]&lt;eos_obs&gt;&lt;bos_subgoal&gt;[G1_t...G3_t (生成或GT, 448×448)]&lt;eos_subgoal&gt;&lt;bos_lang&gt;Task: ℓ. Subtask: ℓ̂. Speed: s. Quality: q. Mistake: b. Control Mode: c.&lt;eos_lang&gt;&lt;bos_proprio&gt;[q_t, q_{t-T}...(linear proj to backbone dim)]&lt;eos_proprio&gt;&lt;bos_action&gt;[noisy a_{t:t+50}^k, 50 tokens, 860M expert flow matching]&lt;eos_action&gt;
+逐 token 解释:</code></pre>
+<div class='protocol-explain'>
+<p class='proto-item'><bos_obs>...<eos_obs>:多视角观测 + 历史帧。block-causal mask:观测 token 自己内部 bidirectional,subgoal token 也能 attend 观测。最多 4 视角 × 6 历史帧,stride 1s,整个历史 30% 概率 drop,后视 30% drop。MEM vision encoder 把任意历史帧数压成单帧 token 数。</p>
+<p class='proto-item'><bos_subgoal>...<eos_subgoal>:subgoal 图像,训练时 25% 概率给(因为给了之后 action 预测退化成 inverse dynamics 太简单,只在 25% batch 加);其中 30% 概率同时 drop subtask 文本(因 visual subgoal 可替代文本)。来源混合:25% 取 segment 末帧(GT)、75% 取 0-4s 前未来真实帧、再加世界模型生成的假图缓解 train-test mismatch。</p>
+<p class='proto-item'><bos_lang>...<eos_lang>:文本指令走 Gemma3 的文本通道,causal attention(后面的文本 attend 前面)。metadata 15% 全 drop,单个字段(speed/quality/mistake)各 5% drop。control mode 不 drop。这是 π0.7 最关键的'context 丰富化'。</p>
+<p class='proto-item'><bos_proprio>...<eos_proprio>:proprio 经 linear projection(不再离散化),每历史帧一个 token;历史帧 drop 时对应 state token 也 mask。</p>
+<p class='proto-item'><bos_action>...<eos_action>:860M action expert 的 50 个 action token,flow matching 去噪(5 步),adaptive RMSNorm 注 timestep。action token 内部 bidirectional,且能 attend VLM backbone 全部 activation(knowledge insulation:梯度不回传 VLM,VLM 只被 FAST token 的 cross-entropy 训)。</p>
+<p class='proto-note'>三个坑:(1) language/subtask 是序列 token(causal),但 subgoal 图像和观测是 block-causal bidirectional,不是统一自回归;(2) 多视角在观测 block 内,subgoal 也是多视角(最多 3 路),两者都进同一 vision encoder,但 subgoal 可 attend 观测、反之不行;(3) 训练时每个 context 组件随机 drop,推理可任意组合子集;CFG 可对任意 prompt 部分做(论文主对 metadata,β∈{1.3,1.7,2.2})。</p>
+</div><h2>数据集</h2><table class='md-table'><thead><tr><th>数据</th><th>规模</th><th>备注</th></tr></thead><tbody><tr><td>Demonstration data</td><td>大规模(未给具体小时数)</td><td>多任务多机器人(静态/移动、单臂/双臂)、多样环境(实验室/家/in-the-wild);高质量人工遥操</td></tr><tr><td>Autonomous data</td><td>大规模</td><td>策略评测时收集的数据,含 π0.6 RL 训练 agent 的 rollout——是'specialist 蒸馏'的关键来源;排除 generalization eval 任务的数据防泄漏</td></tr><tr><td>Human interventions</td><td>—</td><td>policy rollout 中的人工干预段</td></tr><tr><td>Open-source robot datasets</td><td>—</td><td>公开跨本体数据</td></tr><tr><td>Egocentric human video</td><td>—</td><td>人类第一视角视频,作非机器人数据源</td></tr><tr><td>Web multimodal</td><td>—</td><td>object localization / attribute prediction / VQA / text-only / video captioning;给 VLM 注入语义先验</td></tr><tr><td>Subgoal training subset Dg</td><td>子集</td><td>高质量 subtask 标注的 segment,segment 末帧作 GT subgoal 训世界模型</td></tr></tbody></table><h2>架构（摘要）</h2><h3>主干与结构</h3>
+<p><strong>backbone</strong>：Gemma3 4B VLM(初始化)+ MEM vision history encoder(400M)+ 860M flow-matching action expert + BAGEL 14B 世界模型(生成 subgoal)</p>
+<p><strong>参数</strong>：约 5B(4B VLM + 400M vision encoder + 860M action expert);世界模型 BAGEL 14B 独立推理用</p>
+<p><strong>类型</strong>：VLA(flow-matching action expert + knowledge insulation)+ multimodal context conditioning + 轻量世界模型 subgoal 生成</p>
+<h4>关键组件</h4><ul>
+<li>VLM backbone(Gemma3 4B):初始化自 Gemma3,处理多视角观测+历史+文本+subgoal+proprio;用 FAST token 离散 cross-entropy 训(knowledge insulation,梯度不接 action expert)</li>
+<li>MEM vision history encoder(400M,继承自 π0.6-MEM):对历史帧做时空压缩,输出固定 token 数(与帧数无关);448×448 输入</li>
+<li>Action expert(860M):flow matching transformer,50 action token,adaptive RMSNorm 注 timestep;bidirectional 内部 + attend VLM 全 activation;梯度不回传 VLM</li>
+<li>World model(BAGEL 14B,Mixture-of-Transformers):SuSIE 风格,初始化自 web-scale 图像生成/编辑模型;输入 obs+subtask+metadata,flow matching 生成多视角 subgoal;3 路 CFG(±text × ±img)</li>
+<li>High-level language policy:同 Gemma3 4B 架构,把 coaching 数据训成可自动产生 subtask 指令的策略,实现全自主长程任务</li>
+<li>Block-causal attention:观测/subgoal bidirectional 自注意,subgoal 可 attend 观测;文本 causal;action token bidirectional + attend backbone</li>
+</ul>
+<h4>为什么这样设计</h4><p>核心论点:'naive 用异质混合数据会平均掉不同模式产出次优行为'。π0.7 的解法是改 prompt 而非改架构——把每条轨迹的 episode metadata(速度/质量/是否犯错)+ subtask 指令 + 世界模型生成的 subgoal 图像塞进 context,让模型能区分'这条数据是高质量快速执行'还是'这条是失败演示',从而把混合质量数据变成可学习的、且能在推理时通过 metadata prompting 选模式(quality=5/mistake=false 选最优模式)。knowledge insulation 让 VLM 用稳定的离散 loss 训、action expert 用 flow matching 训,两者解耦。subgoal 让 action 预测退化成 inverse dynamics 大幅加速训练(故只在 25% batch 加)。这套设计的杠杆点是:context 丰富化使数据 scaling 从'越大数据越差'变成'越大数据越好'(Fig.18)。</p>
+<h4>数值 sense</h4>
+<table class='md-table numerical'><thead><tr><th>项</th><th>值</th></tr></thead><tbody>
+<tr><td>dit_vlm</td><td>Gemma3 4B VLM(初始化);FAST token 离散监督</td></tr>
+<tr><td>dit_action</td><td>860M action expert;50 action token;adaptive RMSNorm 注 timestep;5 步 flow matching 去噪</td></tr>
+<tr><td>vision_encoder</td><td>MEM vision history encoder ~400M;448×448 输入;时空压缩输出固定 token 数(与历史帧数无关)</td></tr>
+<tr><td>分辨率</td><td>观测/subgoal 448×448;世界模型 ViT 448×336、VAE 512×384(patch 14 vs 16)</td></tr>
+<tr><td>VAE</td><td>BAGEL 世界模型用 VAE 编码图像(patch 16);VLM 观测用 ViT(patch 14)</td></tr>
+<tr><td>每帧 latent 维</td><td>448×448 / patch14² → ~1024 patch token/view(估算);历史 6 帧 × 4 视角经 MEM 压到单帧 token 数</td></tr>
+<tr><td>Chunk</td><td>action chunk H=50 token;执行 Ĥ∈{15,25};5 步去噪;训练时 RTC 模拟 0-12 步延迟(最大 240ms @50Hz)</td></tr>
+<tr><td>上下文</td><td>最多 4 视角 × 6 历史帧(stride 1s)+ 3 subgoal;block-causal mask;历史 30% drop、后视 30% drop、subgoal 25% batch 加、subtask 30% drop、metadata 15% 全 drop + 单字段 5% drop</td></tr>
+<tr><td>动作</td><td>joint 或 ee;UR5e 20Hz、其它 50Hz;双臂移动平台 2×6DoF+1夹爪+1-2升降+3全向底盘;BiPi 静态双臂 2×6DoF+1夹爪;UR5e 双臂 2×6DoF+Robotiq 夹爪</td></tr>
+<tr><td>训练</td><td>从 Gemma3 4B 初始化;knowledge insulation(VLM 用 FAST CE、action expert 用 flow matching,梯度不回传);CFG on metadata β∈{1.3,1.7,2.2};推理最小变体 38ms(3 视角)、最坏 127ms(+MEM+subgoal);世界模型 subgoal 1.25s/张(25 步去噪,4×H100 tensor parallel + 8bit 量化 + SageAttention)</td></tr>
+</tbody></table><p>→ 详见 <strong>Architecture</strong> tab。</p><h2>关键结果</h2><table class='md-table results'><thead><tr><th>指标</th><th>值</th><th>最强 baseline</th><th>setup</th></tr></thead><tbody>
+<tr><td>Out-of-the-box 灵巧任务(对比 RL specialist)</td><td><strong>匹配 π*0.6 specialist,laundry/box throughput 超过</strong></td><td>π*0.6 RL specialist(任务专属 RL finetune)</td><td>Laundry/Espresso/Box Building,PB Sandwich/Shirt Inside-Out/Drive Door/Slice Zucchini/Peel/Take Out Trash</td></tr>
+<tr><td>未见环境指令跟随</td><td><strong>显著超 π0.5/π0.6,高绝对成功率</strong></td><td>π0.5 / π0.6</td><td>14 场景 × 3-6 步指令,4 未见厨房+2 未见卧室</td></tr>
+<tr><td>复杂指代指令成功率</td><td><strong>π0.7(GC)显著领先 complex 指令</strong></td><td>π0.5 / π0.6 / π0.7(无 GC)</td><td>Office Desk 重排,standard vs complex 指令</td></tr>
+<tr><td>打破数据偏差(Reverse Fridge)</td><td><strong>π0.7(GC)成功,无 GC 失败</strong></td><td>π0.5 / π0.6(均失败)</td><td>反向任务,subgoal image 是关键</td></tr>
+<tr><td>跨本体叠衣(UR5e,零样本)</td><td><strong>task progress 85.6% / success 80%</strong></td><td>人类 top2% 操作员 90.9% / 80.6%(首次尝试)</td><td>UR5e 双臂,从未训练叠衣</td></tr>
+<tr><td>跨本体重排(最大 gap,Shirt Bagging)</td><td><strong>π0.7 显著超 prior</strong></td><td>π0.5(崩)/ π0.6</td><td>静态双臂数据→单臂 UR5e</td></tr>
+<tr><td>Scaling with metadata(Fig.18 left)</td><td><strong>π0.7(metadata)数据越大越好(即使质量降)</strong></td><td>π0.7(no metadata)数据越大越差</td><td>4 数据桶 top30/50/80/all</td></tr>
+<tr><td>任务多样性消融(Fig.18 right)</td><td><strong>去最高多样性 20% 显著掉</strong></td><td>去随机 20%(不掉)</td><td>未见短任务</td></tr>
+<tr><td>推理延迟</td><td><strong>最小 38ms(3 视角)/ 最坏 127ms(+MEM+subgoal)</strong></td><td>—</td><td>单 H100,5 步去噪 + training-time RTC</td></tr>
+<tr><td>世界模型 subgoal 生成延迟</td><td><strong>1.25s/张(25 步去噪)</strong></td><td>—</td><td>4×H100 tensor parallel + 8bit 量化 + SageAttention,异步执行</td></tr>
+</tbody></table><h2>Insights</h2><ul class='insights'><li>naive 用异质混合数据会平均掉不同模式产出次优行为——π0.7(no metadata)数据越大越差,π0.7(with metadata)数据越大越好(Fig.18 left)。这是 context 丰富化使数据 scaling 成立的决定性证据。</li><li>数据多样性 > 数据质量:去掉最高任务多样性 20% 数据 π0.7 在未见短任务显著掉,而去随机 20% 不掉(Fig.18 right)。组合泛化的驱动力是任务多样性不是单纯数据量。</li><li>subgoal image 把世界模型语义/物理先验注入 policy:在复杂指代、打破数据偏差、跨本体迁移上都进一步提升,Reverse Fridge 任务 GC 是成功关键(Fig.10/11/12)。</li><li>跨本体迁移涌现策略适应:π0.7 在 UR5e 会为目标本体发现合适策略(单臂 pick-and-place 代替双臂扶袋、垂直抓取代替倾斜抓取),而非复制源行为——这是真组合泛化,区别于模仿(Fig.13)。</li><li>通用模型可蒸馏多个 specialist:π0.7 靠 autonomous eval data(含 RL rollout)+ metadata 区分质量,out-of-the-box 匹配 RL specialist π*0.6,laundry/box throughput 甚至超(Fig.6/7)。metadata 让蒸馏不污染通用性。</li><li>语言 coaching 是新任务数据高效获取路径:π0.7 语言跟随强到可被人分步指令教新长程任务,coaching 数据训 high-level policy 实现全自主(Fig.14/16)。数据获取从示教降到语言指令。</li></ul><h2>vs 同类工作</h2><ul class=''><li>vs π0.5/π0.6(自家前作):π0.5/0.6 只吃语言条件只能用高质量示教;π0.7 加 episode metadata + subtask + subgoal image 三路 context,能用混合质量数据 + autonomous rollout + 人类视频 + web 数据。π0.7 在复杂指代、跨本体、打破数据偏差上显著超 prior。</li><li>vs DreamZero(WAM 路线):DreamZero 靠 video-action joint 建模拿物理先验,π0.7 用轻量 BAGEL 世界模型只生成 subgoal image 作条件,不联合建模 action。DreamZero 强在实时闭环(7Hz),π0.7 强在组合泛化和 coaching——两条路线解决不同问题。</li><li>vs HarmoWAM(双 expert WAM):HarmoWAM 用双 expert + 门控分工泛化/精度;π0.7 用单 action expert + metadata 路由模式(quality/speed)。π0.7 的'路由'是 prompt-level(metadata),HarmoWAM 是 model-level(门控硬切换)——π0.7 更轻量但依赖数据标注质量。</li><li>vs SuSIE(subgoal image conditioning):SuSIE 用单独模型生成 goal image chain-of-thought;π0.7 把 subgoal 系统化成训练 context 一部分,加 dropout 让模型学任意子集,且世界模型用 BAGEL 14B(更强)。</li><li>vs OpenVLA(开源 VLA):OpenVLA 7B 单 VLM + 离散 action token;π0.7 5B VLM + 860M flow-matching action expert(连续)+ 多维 context。π0.7 在灵巧任务和组合泛化上远超,但 OpenVLA 完全开源可复现。</li></ul><h2>局限</h2><ul class='limitations'><li>论文自承:零样本泛化成功率(60-80%)低于 in-distribution(>90%),seen 任务和 unseen 任务/本体组合有差距(p15 Discussion)。</li><li>论文自承:在如此大且多样的数据上,很难确定哪些任务真正'seen' vs 'unseen'——数据里可能含相关技能(不同标签或作为其他任务一部分),generalization 可能主要是'remixing'已见技能(p15 Discussion)。</li><li>论文自承:context 丰富化依赖 episode metadata 标注质量(speed GT 但 quality/mistake 是人工粗标),数据标注成本未量化。</li><li>我们读出:world model(BAGEL 14B)和 high-level policy 是独立模型,π0.7 实际是三模型系统(4B VLA + 14B 世界模型 + 4B high-level policy),非端到端;部署需多卡(世界模型 4×H100)。</li><li>我们读出:subgoal image 只在 25% batch 加训练,推理时若 always 用 subgoal 可能与训练分布有 mismatch;论文未给 always-subgoal 的消融。</li><li>我们读出:跨本体叠衣匹配人类是单任务单本体(UR5e)结果,且人类也是零样本首次尝试(非最佳表现),泛化到更多本体/更难任务是否仍成立未证。</li><li>我们读出:coaching 范式依赖人类实时分步指令,high-level policy 需 coaching 数据训练——对完全自主的长程新任务,仍需先收集 coaching 数据,非完全 zero-data。</li></ul><h2>可复现性</h2><ul><li><strong>code</strong>：https://pi.website/pi07(project page,未明确开源代码)</li><li><strong>weights</strong>：未开源(商业模型)</li><li><strong>hardware</strong>：双臂移动平台 / BiPi 静态双臂 / UR5e 双臂 + Robotiq;推理单 H100(VLA),世界模型 4×H100</li><li><strong>real_eval</strong>：灵巧任务 + 指令跟随 + 跨本体 + 组合泛化 + 人类被试对比(10 操作员)</li><li><strong>training</strong>：从 Gemma3 4B 初始化,knowledge insulation,RTC 训练时模拟延迟</li></ul><div class="tags"><span class='tag'>VLA</span> <span class='tag'>flow matching</span> <span class='tag'>context conditioning</span> <span class='tag'>episode metadata</span> <span class='tag'>subgoal image</span> <span class='tag'>BAGEL</span> <span class='tag'>Gemma3</span> <span class='tag'>cross-embodiment</span> <span class='tag'>compositional generalization</span> <span class='tag'>Physical Intelligence</span> <span class='tag'>coaching</span></div></section><section class="tab-panel" id="architecture"><div class="arch-prose"><h1>π0.7 架构详解</h1>
+
+<p>> 配套 <code>card.json</code>。先用 Mermaid 把数据流和 attention 模式画清,再用文字把每个组件讲透。所有数字来自论文(页码标注)。</p>
+
+<h2>1. 总体数据流(训练 vs 推理)</h2>
+
+<pre class="code"><code>flowchart LR
+  subgraph Context[&quot;Context (prompt)&quot;]
+    Obs[&quot;多视角观测+历史&lt;br/&gt;最多 4×6 帧, 448×448&quot;]
+    Sub[&quot;subgoal images&lt;br/&gt;最多 3 路, BAGEL 生成&quot;]
+    Lang[&quot;语言&lt;br/&gt;Task ℓ + Subtask ℓ̂ + Metadata m + Control c&quot;]
+    Prop[&quot;proprio state&lt;br/&gt;linear proj&quot;]
+  end
+
+  subgraph VLA[&quot;VLA (约 5B)&quot;]
+    MEM[&quot;MEM vision encoder&lt;br/&gt;~400M, 时空压缩&quot;]
+    VLM[&quot;VLM backbone&lt;br/&gt;Gemma3 4B, FAST token CE&quot;]
+    AE[&quot;Action expert&lt;br/&gt;860M, flow matching&quot;]
+    MEM --&gt; VLM
+    VLM -- &quot;全 activation&lt;br/&gt;(梯度不回传)&quot; --&gt; AE
+  end
+
+  subgraph Runtime[&quot;Runtime 辅助模型&quot;]
+    HLP[&quot;High-level policy&lt;br/&gt;Gemma3 4B, 产 subtask ℓ̂&quot;]
+    WM[&quot;World model&lt;br/&gt;BAGEL 14B, 产 subgoal g&quot;]
+  end
+
+  Obs --&gt; MEM
+  Sub --&gt; MEM
+  Lang --&gt; VLM
+  Prop --&gt; VLM
+  HLP -.-&gt; Lang
+  WM -.-&gt; Sub
+  AE --&gt; Action[&quot;action chunk&lt;br/&gt;50 token, 执行 Ĥ∈{15,25}&quot;]</code></pre>
+
+<p><strong>关键点</strong>:VLA 本体是 4B VLM + 400M vision + 860M action expert(knowledge insulation 解耦)。推理时 subtask 由 high-level policy 产、subgoal 由 BAGEL 14B 世界模型产,异步喂给 VLA。是三模型系统非端到端(p4 Fig.2, p22 Fig.19)。</p>
+
+<h2>2. 输入/输出契约</h2>
+
+<table class="md-table">
+<thead><tr><th>方向</th><th>名称</th><th>类型</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>输入</td><td>多视角观测</td><td>image</td><td>最多 4 路(前+2腕+后),每路 6 历史帧(stride 1s),448×448</td></tr>
+<tr><td>输入</td><td>proprio</td><td>vector</td><td>关节状态(含历史),linear proj</td></tr>
+<tr><td>输入</td><td>task/subtask 指令</td><td>text</td><td>ℓ 总任务 + ℓ̂ 子任务</td></tr>
+<tr><td>输入</td><td>subgoal images</td><td>image</td><td>最多 3 路近未来期望图,BAGEL 生成</td></tr>
+<tr><td>输入</td><td>episode metadata</td><td>structured</td><td>speed/quality(1-5)/mistake</td></tr>
+<tr><td>输入</td><td>control mode</td><td>text</td><td>joint/ee</td></tr>
+<tr><td>输出</td><td>action chunk</td><td>continuous</td><td>50 token,5 步去噪,执行 Ĥ∈{15,25}</td></tr>
+</tbody></table>
+
+<h3>数值 sense:模型到底多大</h3>
+
+<table class="md-table">
+<thead><tr><th>项</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>DiT VLM</td><td>Gemma3 4B(初始化);FAST token 离散 CE</td><td>论文 p3-4</td></tr>
+<tr><td>DiT action</td><td>860M;50 action token;adaptive RMSNorm;5 步 flow matching</td><td>论文 p3, p7</td></tr>
+<tr><td>vision encoder</td><td>MEM ~400M;448×448;时空压缩固定 token 数</td><td>论文 p3-4, p6</td></tr>
+<tr><td>分辨率</td><td>观测/subgoal 448×448;世界模型 ViT 448×336、VAE 512×384</td><td>论文 p22</td></tr>
+<tr><td>VAE</td><td>BAGEL 世界模型 VAE(patch 16);VLM 观测 ViT(patch 14)</td><td>论文 p22</td></tr>
+<tr><td>每帧 latent 维</td><td>448²/14² ≈ 1024 patch token/view(估算)</td><td>推算</td></tr>
+<tr><td>Chunk</td><td>action H=50;执行 Ĥ∈{15,25};5 步去噪;RTC 模拟 0-12 步延迟(240ms @50Hz)</td><td>论文 p7-8</td></tr>
+<tr><td>上下文</td><td>4 视角×6 帧+3 subgoal;历史 30% drop、后视 30% drop、subgoal 25% batch、subtask 30% drop、metadata 15%全+5%单字段</td><td>论文 p5-6</td></tr>
+<tr><td>动作</td><td>joint/ee;UR5e 20Hz、其它 50Hz;双臂移动 2×6DoF+1夹爪+1-2升降+3底盘</td><td>论文 p7-8</td></tr>
+<tr><td>训练</td><td>Gemma3 4B 初始化;knowledge insulation;CFG β∈{1.3,1.7,2.2};推理 38-127ms;世界模型 1.25s/张</td><td>论文 p5, p22</td></tr>
+</tbody></table>
+
+<h2>3. Knowledge Insulation:VLM 和 action expert 解耦训练</h2>
+
+<p>这是 π 系列的核心训练 recipe,π0.7 继承并加 context 丰富化(p3)。</p>
+
+<pre class="code"><code>flowchart TD
+  subgraph VLMTrain[&quot;VLM backbone 训练 (梯度路径)&quot;]
+    FAST[&quot;FAST tokens&lt;br/&gt;(离散动作/语义)&quot;]
+    CE[&quot;Cross-Entropy loss&quot;]
+    FAST --&gt; VLM2[&quot;Gemma3 4B VLM&quot;]
+    VLM2 --&gt; CE
+  end
+
+  subgraph AETrain[&quot;Action expert 训练 (梯度路径, 不回传 VLM)&quot;]
+    Noisy[&quot;noisy action a^k&quot;]
+    FM[&quot;flow matching loss&quot;]
+    Noisy --&gt; AE2[&quot;860M Action Expert&quot;]
+    AE2 --&gt; FM
+    AE2 -. &quot;attend VLM activation&lt;br/&gt;(stop-grad)&quot; .-&gt; VLM2
+  end</code></pre>
+
+<p><strong>为什么这样</strong>:VLM 要稳定训练(离散 CE),action expert 要捕获动作多模态(flow matching),两者 loss 性质不同直接耦合会互相干扰。knowledge insulation 让 VLM 学稳定语义表征,action expert 在固定 backbone 上学连续动作分布。这是"大 VLM + 小 action head"范式稳定化的标准做法。</p>
+
+<h2>4. Block-causal attention 模式</h2>
+
+<pre class="code"><code>flowchart LR
+  subgraph Seq[&quot;序列结构 (左→右)&quot;]
+    O[&quot;观测 token&lt;br/&gt;(bidirectional 内部)&quot;]
+    G[&quot;subgoal token&lt;br/&gt;(bidirectional 内部,&lt;br/&gt;可 attend 观测)&quot;]
+    T[&quot;文本 token&lt;br/&gt;(causal)&quot;]
+    A[&quot;action token&lt;br/&gt;(bidirectional 内部,&lt;br/&gt;attend backbone 全 activation)&quot;]
+    O --&gt; G --&gt; T --&gt; A
+  end</code></pre>
+
+<p>观测和 subgoal 是 block-causal bidirectional(自己内部全互注意),subgoal 可 attend 观测但观测不 attend subgoal(未来不泄漏到当前)。文本 causal(后 attend 前)。action token 内部 bidirectional 且能 attend VLM 全部 activation,但梯度不回传 VLM。</p>
+
+<p>CFG 推理时正负样本 pack 成 attention tree 两分支互不 attend(p22 Fig.19)。世界模型更复杂:3 路图(current-ViT、current-VAE、noisy goal-VAE)block-bidirectional,3 路 CFG(±text × ±img)比 VLA 的 2 路更复杂。</p>
+
+<h2>5. 多维 context conditioning 的 dropout 策略</h2>
+
+<p>这是 π0.7 最核心的设计——让模型学任意 prompt 子集(p5):</p>
+
+<table class="md-table">
+<thead><tr><th>组件</th><th>drop 概率</th><th>理由</th></tr></thead>
+<tbody>
+<tr><td>历史 frames</td><td>30% 全 drop</td><td>让模型学无历史也能做</td></tr>
+<tr><td>后视 camera</td><td>30% drop</td><td>不所有平台有后视</td></tr>
+<tr><td>subgoal images</td><td>25% batch 加</td><td>加了 action 预测变 inverse dynamics 太简单,多了反而依赖</td></tr>
+<tr><td>subtask ℓ̂(有 subgoal 时)</td><td>30% drop</td><td>visual subgoal 可替代文本</td></tr>
+<tr><td>episode metadata 全</td><td>15% drop</td><td>让模型学无 metadata 也能做</td></tr>
+<tr><td>单字段(speed/quality/mistake)</td><td>各 5% drop</td><td>部分标注场景</td></tr>
+<tr><td>control mode</td><td>不 drop</td><td>始终需要</td></tr>
+</tbody></table>
+
+<p>推理时任意组合子集,且可 CFG 对任意部分(主对 metadata,β∈{1.3,1.7,2.2})引导动作朝高质量/快速模式。</p>
+
+<h2>6. 推理流程(Algorithm 1)</h2>
+
+<pre class="code"><code>sequenceDiagram
+  participant Init as 初始
+  participant HLP as High-level Policy
+  participant WM as World Model (BAGEL 14B)
+  participant VLA as π0.7 VLA
+  participant Robot as 机器人
+
+  Init-&gt;&gt;HLP: 初始 subtask ℓ̂
+  HLP--&gt;&gt;VLA: ℓ̂ (可被人 coaching 替代)
+  Init-&gt;&gt;WM: o0, ℓ̂, m
+  WM--&gt;&gt;VLA: subgoal g (1.25s, 异步)
+  VLA-&gt;&gt;VLA: 5 步 flow matching 去噪
+  VLA-&gt;&gt;Robot: action chunk (执行 Ĥ 步)
+  loop 每步
+    Robot-&gt;&gt;Robot: 执行动作
+    alt ℓ̂ 变 或 Δ=4s 到
+      WM-&gt;&gt;WM: 异步生成新 g
+      HLP-&gt;&gt;HLP: 产新 ℓ̂
+    end
+    alt Ĥ 步到
+      VLA-&gt;&gt;VLA: 基于 o_{t-T:t}+最新 C 推理
+      VLA-&gt;&gt;Robot: 新 action chunk
+    end
+  end</code></pre>
+
+<p>异步推理:world model 生成 subgoal 在独立线程,VLA 推理总用最新可用 subgoal/subtask。training-time RTC 模拟 0-12 步延迟(最大 240ms @50Hz)保证轨迹平滑。</p>
+
+<h2>7. 为什么 context 丰富化使数据 scaling 成立</h2>
+
+<p>这是论文最核心的论点,Fig.18 给决定性证据:</p>
+
+<p><strong>无 metadata</strong>:数据越大越差。因为混合质量数据(含失败、慢速)不加标注会被平均,模型学到次优行为。</p>
+
+<p><strong>有 metadata</strong>:数据越大越好,即使平均质量下降。因为 metadata 让模型能区分"这条高质量快速"vs"这条失败演示",把不同模式分别学到,推理时 metadata prompting(quality=5/mistake=false)选最优模式。</p>
+
+<p>这个论点的杠杆意义:数据获取从"精心筛选高质量示教"变成"来者不拒靠 metadata 标注",大幅降低数据成本。且 autonomous eval data(含 RL specialist rollout)可蒸馏进通用模型——π0.7 out-of-the-box 匹配 RL specialist(Fig.6/7)。</p>
+
+<h2>8. 与 π0.5/π0.6 的架构差异</h2>
+
+<table class="md-table">
+<thead><tr><th>维度</th><th>π0.5</th><th>π0.6</th><th>π0.7</th></tr></thead>
+<tbody>
+<tr><td>backbone</td><td>PaliGemma</td><td>Gemma3 4B</td><td>Gemma3 4B + MEM</td></tr>
+<tr><td>history</td><td>短</td><td>MEM memory</td><td>MEM + 多维 context</td></tr>
+<tr><td>context</td><td>仅语言 ℓ</td><td>语言 ℓ</td><td>ℓ + ℓ̂ + subgoal + metadata + control</td></tr>
+<tr><td>数据</td><td>高质量示教</td><td>+ 部分 autonomous</td><td>+ autonomous + 人类视频 + web + 失败</td></tr>
+<tr><td>action expert</td><td>flow matching</td><td>flow matching</td><td>flow matching + knowledge insulation</td></tr>
+<tr><td>subgoal</td><td>无</td><td>无</td><td>BAGEL 14B 生成</td></tr>
+<tr><td>跨本体</td><td>弱</td><td>中</td><td>强(零样本叠衣匹配人类)</td></tr>
+</tbody></table>
+
+<p>π0.7 的核心增量在 context 丰富化 + 数据多样性协同,而非架构大改——这是"用更丰富 prompt 解锁异质数据"的方法论升级。</p>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default" });
+</script>
+</section><section class="tab-panel" id="figures"><div class='figures-grid'>
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 1</span>
+            <span class='fig-page'>p.1</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Overview + 数据来源</h4>
+          <a href="figures/p01.png" target="_blank">
+            <img src="figures/p01.png" alt="Overview + 数据来源" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：We introduce π0.7, a steerable generalist robot foundation model that can perform dexterous tasks across many tasks, environments, and robots. π0.7 is trained with diverse prompts that contain not only the task description, but detailed language, generated subgoal images, and episode metadata.</p>
+          <p class='whatitshows'>门面图。左上数据来源:Robot Data(demonstration)+ Autonomous Data(含失败)+ Non-Robot Data(egocentric human + multimodal web)。右上训练:π0.7 VLA 吃 'Episode Metadata + Subgoal Images + Language Instructions' 三类 context。右下推理:High-Level Policy 产 subtask + World Model 产 subgoal image,喂给 action expert。核心信息:π0.7 不是更大模型,是用更丰富的 prompt 解锁异质数据利用 + 组合泛化。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 2</span>
+            <span class='fig-page'>p.4</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Architecture(最重要)</h4>
+          <a href="figures/p04.png" target="_blank">
+            <img src="figures/p04.png" alt="Architecture(最重要)" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：The π0.7 model is a 5B-parameter VLA consisting of a 4B VLM backbone, a MEM-style video history encoder and a 860M parameter action expert. The model&#x27;s context includes multiple distinct modalities, including language commands, episode metadata that describes the data quality and strategy, and multimodal inputs such as subgoal images. At runtime, the language commands are produced by a high-level semantic policy based on the same architecture, and the subgoal images are produced by a lightweight world model based on the BAGEL image generation model.</p>
+          <p class='whatitshows'>全文最该看。中间 VLA:4B Gemma3 VLM backbone + MEM history encoder + 860M action expert(flow matching)。Context 输入(左上):language commands、episode metadata(quality/speed/mistake)、subgoal images。运行时(左下):high-level policy 产 subtask 指令、BAGEL 世界模型产 subgoal 图像,异步喂给 VLA。一张图同时回答:模型多大(5B)、context 有哪几路、推理时 subtask/subgoal 哪来。注意 action expert 是单独的 860M transformer,不是 VLM head。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 3</span>
+            <span class='fig-page'>p.6</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Prompt 结构示例</h4>
+          <a href="figures/p06.png" target="_blank">
+            <img src="figures/p06.png" alt="Prompt 结构示例" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：π0.7 uses diverse modalities of context in the prompt, including: subtask instructions, subgoal images, and episode metadata. We train the model with dropout for each component, and then prompt the model flexibly combining modalities.</p>
+          <p class='whatitshows'>两个 prompt 完整示例。例1 'put food on table':subtask 'push the open button on the microwave' → 'pick up the plate of food in the microwave' → 'put the plate with food on the dining table',配 metadata(Quality 5/5, Speed 2000, Mistake false)和 subgoal 图。例2 'fold the shirt':subtask 'close the microwave' 等。强调每个组件训练时随机 drop,推理可任意组合(如 UR5e 叠衣用 subgoal+metadata)。这张图把'context 丰富化'落到具体可读的 prompt 串。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 4</span>
+            <span class='fig-page'>p.7</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>评测机器人</h4>
+          <a href="figures/p07.png" target="_blank">
+            <img src="figures/p07.png" alt="评测机器人" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Illustrations of some of the robots in our experiments. We evaluate π0.7 on a variety of robots, including bimanual mobile manipulators (left), static bimanual robots (middle), and a bimanual UR5e setup (right) that we use for cross-embodiment experiments.</p>
+          <p class='whatitshows'>三类机器人平台。左:双臂移动平台(2×6DoF 臂 + 1 夹爪 + 1-2 升降 + 3 全向底盘)。中:BiPi 静态双臂(2×6DoF + 1 夹爪)。右:UR5e 双臂(2×6DoF + Robotiq 夹爪,跨本体测试用)。UR5e 比训练用的臂更长更重、形态不同、桌面侧置,是跨本体迁移的最大挑战。UR5e 20Hz,其它 50Hz。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 5</span>
+            <span class='fig-page'>p.8</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>长程任务示例</h4>
+          <a href="figures/p08.png" target="_blank">
+            <img src="figures/p08.png" alt="长程任务示例" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Illustration of selected evaluation tasks. We evaluate π0.7 on a number of tasks, and two of the more longer-horizon ones are visualized here.</p>
+          <p class='whatitshows'>两个长程任务的可视化。Take Out Trash:粗指令 'take out the trash' 自主完成全程。Toasting a Bagel:训练未见任务,靠 coaching(分步语言指令 'open toaster oven'/'grasp knob'/'pick up plate'/'put bagel on plate')完成。展示 π0.7 的两种能力:长程自主 + 语言 coaching 学新任务。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 6</span>
+            <span class='fig-page'>p.9</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Out-of-the-box 灵巧任务</h4>
+          <a href="figures/p09.png" target="_blank">
+            <img src="figures/p09.png" alt="Out-of-the-box 灵巧任务" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：π0.7 can perform a wide range of highly dexterous tasks directly out of the box. We consider tasks from π*0.6 (top row) and a number of other dexterous tasks including ones from the &#x27;Robot Olympics&#x27; experiments (bottom row).</p>
+          <p class='whatitshows'>上下两行任务。上行(π*0.6 任务):Laundry(T恤短裤 / 多样最难项)、Make Espresso、Box Building。报告 success rate + normalized throughput(相对 specialist)。下行:Make PB Sandwich、Shirt Inside-Out、Drive Through Door、Slice Zucchini、Peel Fruits/Veg、Take Out Trash,报 task progress。核心结论:同一个 π0.7 通用模型直接 out-of-the-box 匹配 RL specialist π*0.6,在 laundry/box building 上 throughput 甚至超过 specialist。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 7</span>
+            <span class='fig-page'>p.9</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Metadata + Eval Data 消融</h4>
+          <a href="figures/p09.png" target="_blank">
+            <img src="figures/p09.png" alt="Metadata + Eval Data 消融" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Impact of prompt composition and evaluation data on out-of-the-box performance: We compare π0.7 with two ablations: one that does not include episode metadata in the context, π0.7 (no metadata), and another that does not include data from autonomous evaluation episodes during training, π0.7 (no eval data).</p>
+          <p class='whatitshows'>三模型对比:π0.7 vs π0.7(no metadata) vs π0.7(no eval data),在 Laundry/Espresso/Box 上比 throughput + success。π0.7 全胜,gap 在 throughput 最明显。证明两件事:(1)metadata 是关键——去掉它无法区分混合质量数据;(2)autonomous eval data(含 RL specialist 蒸馏)是 specialist 性能来源。这是论文核心论点的直接消融证据。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 8</span>
+            <span class='fig-page'>p.10</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>记忆任务</h4>
+          <a href="figures/p10.png" target="_blank">
+            <img src="figures/p10.png" alt="记忆任务" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Tasks that require memory: π0.7 can also perform tasks that require explicitly keeping track of prior context, achieving similar or better performance compared to the specialist policies with memory fine-tuned to some of the tasks in the MEM paper.</p>
+          <p class='whatitshows'>四个需记忆的任务:Swap 3 Mugs、Find Object、Scoop Coffee、Window Cleaning。π0.7 out-of-the-box 匹配或超过 π0.6-MEM SFT specialist(后者是专门 finetune 的)。证明 MEM history encoder 让 π0.7 不 finetune 也有记忆能力——是 context 丰富化 + 架构继承的复合收益。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 9</span>
+            <span class='fig-page'>p.11</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>新环境指令跟随</h4>
+          <a href="figures/p11.png" target="_blank">
+            <img src="figures/p11.png" alt="新环境指令跟随" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Broad instruction following in novel environments: We evaluate π0.7 on 14 instruction following scenarios, each of which involve following a sequence of 3-6 open-ended instructions, across 4 unseen kitchen and 2 unseen bedroom environments.</p>
+          <p class='whatitshows'>14 个指令跟随场景,每个 3-6 步开放指令,跨 4 未见厨房 + 2 未见卧室。报 instruction following success rate(正确跟随的指令占比)。π0.7 显著超 π0.5 和 π0.6,绝对成功率高。证明 π0.7 的语言跟随能力在完全未见环境也成立——不是过拟合训练环境。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 10</span>
+            <span class='fig-page'>p.11</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>复杂指代指令</h4>
+          <a href="figures/p11.png" target="_blank">
+            <img src="figures/p11.png" alt="复杂指代指令" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Following complex referential instructions: π0.7 and prior models all succeed on the simpler re-arrangement instructions, but π0.7 performs significantly better on the complex and unusual instructions.</p>
+          <p class='whatitshows'>Office Desk 物体重排,分 Standard('pick up the spoon')和 Complex('pick up the object I would use to eat soup'/'pick up the fruit on the largest plate')。π0.7 在 complex 显著领先,加 subgoal image(π0.7 GC)进一步拉开。证明 subgoal image 把世界模型的语义理解注入 policy,在语言指代模糊时用视觉 disambiguate。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 11</span>
+            <span class='fig-page'>p.11</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>打破数据偏差</h4>
+          <a href="figures/p11.png" target="_blank">
+            <img src="figures/p11.png" alt="打破数据偏差" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Breaking dataset biases by following instructions: the improved language-following performance of π0.7 enables it to break strong dataset biases.</p>
+          <p class='whatitshows'>两任务:Reverse Bussing(训练 bussing 是垃圾入垃圾桶+餐具入餐盘,测试要求反着来)、Reverse Fridge to Microwave(训练只单向,测试反向)。π0.7 显著超 prior,且 Reverse Fridge 任务 π0.7(GC)即 subgoal image 是成功关键——世界模型能据文本指令生成反方向 subgoal。这是'语言跟随强到能对抗数据偏差'的最强证据。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 12</span>
+            <span class='fig-page'>p.12</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>跨本体迁移</h4>
+          <a href="figures/p12.png" target="_blank">
+            <img src="figures/p12.png" alt="跨本体迁移" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Cross-embodiment transfer: Left: Both π0.7 and prior models achieve strong cross-embodiment transfer directly out of the box on simpler re-arrangement or repositioning style tasks. Right: for the more dexterous tasks that require folding towels and t-shirts, the embodiment gap poses an even greater challenge.</p>
+          <p class='whatitshows'>左:简单重排任务跨本体(Table Setting/Bag In Backpack/Organize Tupperware/Shirt Bagging),embodiment gap 递增。π0.5 在大 gap 崩,π0.6/π0.7 撑住,最大 gap(单臂 UR5e)π0.7 显著胜。右:灵巧叠衣从静态双臂迁 UR5e(从未见过),π0.7 成功且加 subgoal(π0.7 GC)更好,task progress 匹配人类 teleoperator 零样本表现。这是论文最惊人的结果。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 13</span>
+            <span class='fig-page'>p.12</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>涌现策略适应本体</h4>
+          <a href="figures/p12.png" target="_blank">
+            <img src="figures/p12.png" alt="涌现策略适应本体" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Cross-embodiment transfer produces emergent strategies adapted to the target embodiment. (a) On the source robot, human teleoperators use one arm to hold the bag open while the other performs insertion. On the UR5e target robot, π0.7 instead discovers a single-arm pick-and-place strategy. (b) Human teleoperators approach the shirt with a tilted end-effector on the source robot, while π0.7 produces vertical grasps on the UR5e.</p>
+          <p class='whatitshows'>两个对比案例。(a)装包:人类在源机器人用双臂(一扶袋一插入),π0.7 在 UR5e 单臂 pick-and-place(因 UR5e 臂长够)。(b)叠衣:人类在源机器人倾斜末端接近,π0.7 在 UR5e 用垂直抓取(更适合大臂)。关键 insight:π0.7 会为目标本体发现合适策略,而非复制源行为——这是真组合泛化,区别于模仿。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 14</span>
+            <span class='fig-page'>p.13</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>语言 coaching 学新任务</h4>
+          <a href="figures/p13.png" target="_blank">
+            <img src="figures/p13.png" alt="语言 coaching 学新任务" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Example of language coaching: We can &#x27;teach&#x27; a new task to π0.7 by providing step-by-step verbal instructions. Because of its language following ability, π0.7 can perform new tasks successfully under user instruction, and these instructions can then by used to train a high-level policy that prompts π0.7 so that it can perform the task fully autonomously.</p>
+          <p class='whatitshows'>Air Fryer 装红薯的 coaching 序列:'grasp handle'→'open air fryer'→'pick up sweet potato'→'put into air fryer'→'close'。π0.7 跟随分步指令完成未见任务。coaching 数据可训成 high-level policy 实现全自主(Fig.16)。这开启'用语言而非示教教机器人新任务'的范式。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 15</span>
+            <span class='fig-page'>p.13</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>Coaching 长程新任务</h4>
+          <a href="figures/p13.png" target="_blank">
+            <img src="figures/p13.png" alt="Coaching 长程新任务" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Coaching to perform new long-horizon tasks: Because π0.7 can follow language instructions effectively, even for unfamiliar skills, it can be &#x27;coached&#x27; to perform a number of unseen, longer horizon tasks both when conditioned on language and generated subgoal images (π0.7 (GC)).</p>
+          <p class='whatitshows'>三任务:Loading/Unloading Air Fryer、Toasting Bagel。π0.7 vs π0.6 vs π0.5 + π0.7(GC)。prior 模型语言跟随差无法 coaching,π0.7 显著领先,GC 进一步提升。证明 coaching 是 π0.7 独有能力,prior VLA 因语言跟随弱无法用此范式。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 16</span>
+            <span class='fig-page'>p.13</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Coaching 转自主</h4>
+          <a href="figures/p13.png" target="_blank">
+            <img src="figures/p13.png" alt="Coaching 转自主" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Acquiring new autonomous capabilities with coaching: We can use the coaching episodes collected for a number of different unseen tasks to train a high-level policy to automatically prompt π0.7 in accordance with the coaching episodes.</p>
+          <p class='whatitshows'>五任务:Scoop Rice/Reverse Fridge/Loading Air Fryer/Toasting Bagel/Unloading Air Fryer。对比 π0.7(coaching 人类实时指令) vs π0.7(autonomous 用 coaching 数据训的 high-level policy)。autonomous 紧跟 coaching 表现,无需额外遥操数据。证明 coaching→high-level policy 闭环成立,是新任务数据高效获取路径。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 17</span>
+            <span class='fig-page'>p.13</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>短程新任务 out-of-the-box</h4>
+          <a href="figures/p13.png" target="_blank">
+            <img src="figures/p13.png" alt="短程新任务 out-of-the-box" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Performing new short-horizon tasks: π0.7 can perform a number of new short-horizon tasks directly out of the box, including scooping rice into a rice cooker, spinning various objects such as a gear set and desk fan, and wiping down objects with a cloth, such as a ruler and headphones, despite no data being collected for any of these tasks.</p>
+          <p class='whatitshows'>短程新任务:Press French Press Plunger/Scoop Rice/Wiping Office Supplies/Spinning Articulated Objects(gear/fan)。无任何该任务数据,π0.7 直接 out-of-the-box 完成,语言或 GC 表现相近。证明 π0.7 能组合已学技能做新短任务——compositional generalization 的直接证据。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 18</span>
+            <span class='fig-page'>p.14</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>Scaling 实验(核心 insight)</h4>
+          <a href="figures/p14.png" target="_blank">
+            <img src="figures/p14.png" alt="Scaling 实验(核心 insight)" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Scaling of generalization performance with diverse context and data: Left: We find that π0.7 (with metadata) can continuously improve its performance when it is trained on larger datasets, even when the average quality of the data actually decreases. By contrast, without training on rich conditioning information, π0.7 (without metadata) actually can degrade in performance as more lower quality data is introduced. Right: When π0.7 is trained without our robot data with the highest task diversity, its performance degrades substantially.</p>
+          <p class='whatitshows'>两张图支撑论文最核心论点。左:数据分 4 桶(top30%/50%/80%/all),π0.7(with metadata)随数据增大持续提升即使平均质量下降;π0.7(no metadata)反而变差——证明 metadata 是异质数据 scaling 的钥匙。右:去掉最高任务多样性 20% 数据,π0.7 在未见短任务上显著掉,而去掉随机 20% 不掉——证明任务多样性是组合泛化的驱动力。这张图是'context 丰富化 + 数据多样性'协同论点的决定性证据。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 19</span>
+            <span class='fig-page'>p.22</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>Attention 模式细节</h4>
+          <a href="figures/p22.png" target="_blank">
+            <img src="figures/p22.png" alt="Attention 模式细节" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：The π0.7 model and its world model (for generating subgoal images) use several different nontrivial attention patterns during training and inference. From top left: in absence of image goals we use the same attention patterns as in π0.5, with global bidirectional attention between embeddings for all memory-aware image views. Note that the FAST tokens (only available at training time) and the flow actions do not attend to each other.</p>
+          <p class='whatitshows'>VLA 和世界模型的 attention mask 设计。VLA:无 subgoal 时同 π0.5(memory 图像 bidirectional);有 subgoal 时加一个 block-causal bidirectional block 在 text 后;CFG 推理时正负样本 pack 成 attention tree 两分支互不 attend。世界模型:3 路图(current-ViT、current-VAE、noisy goal-VAE)block-bidirectional,3 路 CFG 比 VLA 的 2 路更复杂。这张图是 Fig.2 的 attention 细节展开,解释 block-causal mask 怎么实现。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 20</span>
+            <span class='fig-page'>p.23</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>Joint vs EE 控制</h4>
+          <a href="figures/p23.png" target="_blank">
+            <img src="figures/p23.png" alt="Joint vs EE 控制" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Joint vs. end-effector (EE) control for prior models on cross-embodiment tasks. We compare joint-space and end-effector (EE) control for baseline policies across a range of tasks, observing no substantial difference in performance between the two control modes.</p>
+          <p class='whatitshows'>Table Setting/Bag In Backpack/Organize Tupperware/Shirt Bagging/Towel Folding/Shirt Folding 六任务,π0.5/0.5EE/0.6/0.6EE 对比。结论:joint 和 EE 控制无显著差异。因此主跨本体实验用 joint 控制(更简单)。这是工程选择证据,非核心结果。</p>
+        </div>
+        
+
+        <div class='figure-card badge-supportive'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 21</span>
+            <span class='fig-page'>p.23</span>
+            <span class='badge badge-supportive'>supportive</span>
+          </div>
+          <h4>人类被试经验分布</h4>
+          <a href="figures/p23.png" target="_blank">
+            <img src="figures/p23.png" alt="人类被试经验分布" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Operator experience in the human subject study. Box plots show teleoperation experience (in hours) of the ten recruited operators across three categories: UR5e (target robot), the static bimanual robot (source robot), and all robots combined.</p>
+          <p class='whatitshows'>10 个 top 2% 经验操作员在 UR5e/静态双臂/全部机器人上的遥操经验箱线图。平均 ~375 小时全平台经验。关键:他们在 UR5e 叠衣是零样本(从未做过)。这是 Fig.22 人类 baseline 的可信度证据——操作员是真专家但任务零样本,和 π0.7 公平对比。</p>
+        </div>
+        
+
+        <div class='figure-card badge-key'>
+          <div class='figure-head'>
+            <span class='fig-id'>Figure 22</span>
+            <span class='fig-page'>p.23</span>
+            <span class='badge badge-key'>key</span>
+          </div>
+          <h4>π0.7 vs 人类(叠衣)</h4>
+          <a href="figures/p23.png" target="_blank">
+            <img src="figures/p23.png" alt="π0.7 vs 人类(叠衣)" loading="lazy" />
+          </a>
+          <p class='caption'><strong>原文 caption</strong>：Comparison of π0.7 (GC) and human. We find that π0.7 (GC) achieves competitive performance compared to the human operators, in the shirt folding task with the UR5e bimanual platform.</p>
+          <p class='whatitshows'>UR5e 双臂叠衣任务:π0.7(GC)task progress 85.6% / success 80% vs 人类 90.9% / 80.6%。π0.7 在从未训练过的本体上零样本叠衣,匹配 top 2% 经验人类操作员的首次尝试。这是论文最惊人的单点结果——工业臂上零样本灵巧任务达到人类水平。</p>
+        </div>
+        
+</div></section><section class="tab-panel" id="podcast">
+<div class="audio-player">
+  <h3>🎧 音频版</h3>
+  <audio controls preload="metadata" style="width:100%;max-width:560px;">
+    <source src="audio/podcast.mp3" type="audio/mpeg">
+    你的浏览器不支持 audio 元素。<a href="audio/podcast.mp3">下载 MP3</a>
+  </audio>
+  <p class="dur">时长 18:02 · Edge TTS</p>
+</div>
+<div class="podcast-prose"><h1>π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities</h1>
+
+<p>2026-04-24，Physical Intelligence 的 Physical Intelligence 等人发布的论文，标题是 π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities。</p>
+
+<h2>开场:这篇论文真正要解决什么</h2>
+
+<p>这篇论文要解决的核心问题非常具体:<strong>怎么让一个通用 VLA 真正用上异质混合数据——含失败、含跨策略、含 RL specialist 蒸馏、含人类视频、含 web 多模态——而不是只能用精心筛选的高质量示教。</strong></p>
+
+<p>为什么这件事难。因为 naive 训练会把不同模式平均掉。比如同一个叠衣任务,数据里有快速高质量的、有慢速犯错的、有 RL agent 跑出来的。如果你只用一条语言指令"fold the shirt"做条件,模型学到的就是这些模式的平均——产出次优行为。这就是为什么 prior VLA 必须精心筛选数据,只留高质量示教,数据多样性被锁死。</p>
+
+<p>π0.7 的核心论点是:<strong>如果你给每条轨迹的 prompt 加上足够丰富的 context——不只是任务描述,还有 episode metadata(这条数据多快、质量几分、有没有犯错)、subtask 指令(下一语义子任务)、subgoal 图像(世界模型生成的近未来期望场景)——模型就能区分"这条是高质量快速执行"还是"这条是失败演示",从而把混合质量数据变成可学习的、且能在推理时通过 metadata prompting 选最优模式。</strong></p>
+
+<p>它走通了,顺带做到了一件很惊人的事:同一个通用 π0.7 模型,out-of-the-box 匹配任务专属的 RL specialist,在叠衣和搭盒子上 throughput 甚至超过 specialist;还能零样本迁移到从未训练过的 UR5e 工业臂上叠衣,匹配 top 2% 经验人类操作员的首次尝试。</p>
+
+<h2>它的输入和输出到底是什么</h2>
+
+<p>你需要在脑子里先建一个模块图。</p>
+
+<p>输入有六路:<strong>多视角观测</strong>,最多 4 个相机(前视、2 腕部、可选后视),每路最多 6 个历史帧,stride 1 秒,resize 到 448×448,经 MEM vision encoder 做时空压缩;<strong>proprio</strong>,机器人关节状态含历史,linear projection 映射到 backbone 维度;<strong>task 指令 ℓ</strong>,总任务如 "clean the kitchen";<strong>subtask 指令 ℓ̂</strong>,下一语义子任务如 "open the fridge door";<strong>subgoal 图像</strong>,最多 3 路近未来期望图,由 BAGEL 14B 世界模型生成;<strong>episode metadata</strong>,speed(每 500 步分桶)、quality(1-5 分)、mistake(布尔);<strong>control mode</strong>,joint 或 ee。</p>
+
+<p>输出就一路:<strong>action chunk</strong>,50 步连续动作,由 860M 的 action expert 用 flow matching 去噪生成,5 步去噪,实际执行 15 或 25 步。</p>
+
+<h3>输入到底怎么拼成一条序列</h3>
+
+<p>光说六路输入还不够具体,我把它拆成一条显式的拼接序列,你在脑子里能建出来。</p>
+
+<p>序列大致长这样:开头是 <code>&lt;bos_obs&gt;</code>,里面是多视角观测加历史帧,经 MEM vision encoder 时空压缩;然后 <code>&lt;bos_subgoal&gt;</code> 包 subgoal 图像(最多 3 路);接着 <code>&lt;bos_lang&gt;</code> 是文本块,包括 task、subtask、speed、quality、mistake、control mode;再 <code>&lt;bos_proprio&gt;</code> 是 proprio state 经 linear projection;最后 <code>&lt;bos_action&gt;</code> 是 action expert 要去噪的 50 个 noisy action token。</p>
+
+<p>这里有几个坑要特别说清,不然容易误解。</p>
+
+<p>第一,language 和 subtask 是 causal 序列 token——后面的文本 attend 前面的,这是标准 LLM 那套。但 subgoal 图像和观测是 block-causal bidirectional——它们内部全互注意,subgoal 还能 attend 观测,但观测不 attend subgoal(未来不泄漏到当前)。所以这不是统一自回归,是混合 attention 模式。action token 也是 bidirectional 内部,而且能 attend VLM backbone 的全部 activation。</p>
+
+<p>第二,多视角在观测 block 内,subgoal 也是多视角(最多 3 路,不含后视)。两者都进同一个 vision encoder,但 subgoal 可 attend 观测、反之不行。这是说 subgoal 是"对未来期望的描述",要看着当前观测来生成和解读,但不能反过来让当前观测看未来。</p>
+
+<p>第三,训练和推理时这条序列长得不一样——具体是每个组件在训练时随机 drop。历史帧 30% 概率全 drop、后视 30% drop、subgoal 只在 25% 的 batch 里加(因为加了之后 action 预测退化成 inverse dynamics 太简单,多了模型反而依赖)、subtask 在有 subgoal 时 30% drop(因 visual subgoal 可替代文本)、metadata 15% 全 drop 加单字段各 5% drop。control mode 不 drop。这样模型学到的是任意 prompt 子集都能工作,推理时可灵活组合。</p>
+
+<p>这个 dropout 设计是 π0.7 的隐藏杠杆——它让模型不依赖任何单一 context 组件,推理时可以根据任务选最合适的组合,比如 UR5e 叠衣用 subgoal 加 metadata。</p>
+
+<h2>架构:5B VLA + 860M action expert + 14B 世界模型</h2>
+
+<p>主干是 Gemma3 4B VLM,从预训练初始化。π0.7 的本体是 4B VLM + 400M MEM vision encoder + 860M action expert,加起来约 5B 参数。</p>
+
+<p>这里有个关键设计叫 knowledge insulation。VLM backbone 用 FAST token 做离散 cross-entropy 监督——这是稳定的离散 loss。860M 的 action expert 用 flow matching 学连续动作——这是捕获动作多模态的生成式 loss。两者 loss 性质不同,直接耦合会互相干扰。所以 action expert attend VLM 的全部 activation,但梯度不回传 VLM。VLM 学稳定语义表征,action expert 在固定 backbone 上学连续动作分布。</p>
+
+<p>action expert 是单独的 860M transformer,不是 VLM 的 head。它有 50 个 action token,用 adaptive RMSNorm 注入 flow matching 的 timestep,5 步去噪。内部 bidirectional 互注意,且能 attend VLM 全 activation。</p>
+
+<p>推理时还有两个辅助模型。一个是 high-level language policy,同样是 Gemma3 4B 架构,负责产 subtask 指令——这个可以用 coaching 数据训成,实现全自主长程任务。另一个是 BAGEL 14B 世界模型,负责生成 subgoal 图像——SuSIE 风格,初始化自 web-scale 图像生成和编辑模型,输入当前观测加 subtask 加 metadata,flow matching 生成多视角 subgoal,3 路 CFG。</p>
+
+<p>所以严格说,π0.7 不是单一端到端模型,是三模型系统:5B VLA + 14B 世界模型 + 4B high-level policy。部署时 VLA 在单 H100 上,世界模型需要 4 张 H100 做 tensor parallel。</p>
+
+<h2>给你一个数值 sense:这套模型到底多大</h2>
+
+<p>光说 5B 加 860M 可能没感觉,我把维度念细一点。</p>
+
+<p>VLM backbone 是 Gemma3 4B,从预训练初始化,用 FAST token 做离散监督。MEM vision encoder 约 400M 参数,448×448 输入,做时空压缩——能把任意历史帧数压成单帧 token 数,这是它继承自 π0.6-MEM 的能力。action expert 860M,50 个 action token,adaptive RMSNorm 注 timestep,5 步 flow matching 去噪。</p>
+
+<p>分辨率上,观测和 subgoal 都 resize 到 448×448。世界模型那边更复杂:ViT 走 448×336(patch 14),VAE 走 512×384(patch 16),因为 ViT 和 VAE 的 patch size 不同。粗算每视角约 1024 个 patch token,6 个历史帧 × 4 视角经 MEM 压到单帧 token 数。</p>
+
+<p>action chunk 是 50 个 token,执行 15 或 25 步。训练时用 training-time RTC(real-time chunking)模拟 0 到 12 步延迟,对应 50Hz 机器人上最大 240ms 推理延迟——这是为了保证轨迹平滑,即使推理有延迟也不卡顿。</p>
+
+<p>控制频率上,UR5e 跑 20Hz,其它机器人 50Hz。机器人形态多样:双臂移动平台是 2×6 自由度臂 + 1 夹爪 + 1-2 升降机构 + 3 自由度全向底盘;BiPi 静态双臂是 2×6 自由度 + 1 夹爪;UR5e 双臂是 2×6 自由度 + Robotiq 夹爪。UR5e 比训练用的臂更长更重、形态不同、桌面侧置,是跨本体迁移的最大挑战。</p>
+
+<p>推理速度,最小变体 38ms——3 个相机、5 步去噪、training-time RTC(无额外推理开销)。开启 MEM vision encoder 加 subgoal image 到 context,最坏 127ms。世界模型生成一张 subgoal 要 1.25 秒,25 步去噪,在 4 张 H100 上做 tensor parallel,矩阵乘法 8bit 量化,attention 用 SageAttention 优化。但这个 1.25 秒不阻塞 VLA,异步执行——VLA 继续跑,世界模型在后台生成下一个 subgoal。</p>
+
+<p>CFG 用在 metadata 上,β 取 1.3、1.7 或 2.2,引导动作朝高质量、快速、无错误的模式走。</p>
+
+<h2>真正让 π0.7 成立的:context 丰富化使数据 scaling 成立</h2>
+
+<p>这是论文最核心的论点,我必须单独讲。</p>
+
+<p>π0.7 做了一个决定性实验(Fig.18 left)。它把叠衣数据按质量和速度分 4 桶:top 30%、top 50%、top 80%、全部数据。然后分别训 π0.7 with metadata 和 π0.7 without metadata。</p>
+
+<p>结果非常打脸 naive 直觉。π0.7 with metadata 随数据增大持续提升,即使平均质量在下降——因为 metadata 让模型能区分好坏模式,坏数据也能学。π0.7 without metadata 反而越大数据越差——因为没标注的坏数据被平均进来,污染了模型。</p>
+
+<p>这意味着什么。意味着 metadata 不是装饰,是异质数据 scaling 的钥匙。没有它,数据越多越烂;有它,数据越多越好,即使质量下降。这把数据获取从"精心筛选高质量示教"变成"来者不拒靠 metadata 标注",成本数量级下降。</p>
+
+<p>第二个实验(Fig.18 right)进一步证明数据多样性 > 数据质量。去掉最高任务多样性的 20% 数据,π0.7 在未见短任务上显著掉;而去掉随机的 20% 不掉。这证明组合泛化的驱动力是任务多样性,不是单纯数据量。</p>
+
+<p>这两个实验合起来就是 π0.7 的核心论点:context 丰富化 + 数据多样性协同,才能让通用 VLA 真正泛化。缺一不可。</p>
+
+<h2>一个最值得记住的 insight:通用模型可蒸馏 specialist</h2>
+
+<p>π0.7 做了一件很反直觉的事。它把 autonomous eval data——就是策略评测时收集的数据,包含 π0.6 RL 训练 agent 的 rollout 和失败 episode——大量混进训练。靠 episode metadata 区分质量。</p>
+
+<p>结果是 π0.7 out-of-the-box 匹配 RL specialist π*0.6,在叠衣和搭盒子上 throughput 甚至超过 specialist(Fig.6)。Fig.7 消融证明:π0.7 no eval data 在 throughput 上显著掉——说明 specialist 性能确实来自这些 autonomous rollout 的蒸馏。</p>
+
+<p>这个 insight 分量很重。它意味着通用模型可以蒸馏多个 specialist 进自身,且 metadata 让蒸馏不污染通用性。你不需要为每个灵巧任务单独 RL 训一个 specialist,一个 π0.7 通用模型 out-of-the-box 就行。这是通用 VLA 路线对"每任务 RL"范式的直接挑战。</p>
+
+<h2>跨本体迁移:不只是迁移,是涌现新策略</h2>
+
+<p>π0.7 最惊人的结果是跨本体叠衣。叠衣数据全部在静态双臂上收集,从未在 UR5e 上训过。但 π0.7 在 UR5e 双臂上零样本叠衣,task progress 85.6%、success 80%——匹配 10 个 top 2% 经验人类操作员在 UR5e 上的首次尝试(90.9% / 80.6%)。</p>
+
+<p>但更深的 insight 在 Fig.13。π0.7 不是复制源机器人的行为。源机器人是人类用双臂——一臂扶袋一臂插入;π0.7 在 UR5e 上用单臂 pick-and-place,因为 UR5e 臂长够。源机器人人类用倾斜末端接近布料;π0.7 在 UR5e 用垂直抓取,更适合大臂的运动学。</p>
+
+<p>这说明 π0.7 学到的是"理解任务目标后为目标本体发现合适策略",而非"模仿源轨迹"。这是真组合泛化,区别于模仿。这个结果指向一个实用价值:灵巧技能可以从轻量低成本平台(易遥操)迁移到高负载工业臂(难遥操),大幅降低示教成本。</p>
+
+<h2>语言 coaching:用语言而非示教教新任务</h2>
+
+<p>π0.7 的语言跟随能力强到一个新程度——可以被人分步指令 coaching 完成未见长程任务。比如 Air Fryer 装红薯,人一步步说"抓把手""开盖""拿红薯""放进去""关上",π0.7 跟着做。</p>
+
+<p>更妙的是,这些 coaching 数据可以训一个 high-level language policy(同 Gemma3 4B 架构),把"观测加历史 subtask→新 subtask"学下来。推理时这个 high-level policy 自动产 subtask 指令喂给 π0.7,实现全自主。Fig.16 证明 π0.7 autonomous 紧跟 π0.7 coaching 表现,无需额外遥操数据。</p>
+
+<p>这开启一个范式转变:新任务的数据获取从"收集示教轨迹"降到"人用语言分步指挥几次"。成本数量级下降。prior VLA 因为语言跟随弱,根本无法用这个范式——Fig.15 显示 π0.5/π0.6 在 coaching 任务上几乎全失败。</p>
+
+<h2>关键结果:挑几个有对照的数字</h2>
+
+<p>我挑几个有对照的。</p>
+
+<p><strong>Out-of-the-box 灵巧任务</strong>:同一个 π0.7 通用模型直接 out-of-the-box 匹配 RL specialist π*0.6,在 laundry 和 box building 上 throughput 甚至超。这是通用模型蒸馏 specialist 的实证。</p>
+
+<p><strong>未见环境指令跟随</strong>:14 个场景 × 3-6 步开放指令,跨 4 未见厨房 + 2 未见卧室。π0.7 显著超 π0.5 和 π0.6,绝对成功率高。证明语言跟随在完全未见环境成立。</p>
+
+<p><strong>打破数据偏差</strong>:Reverse Fridge to Microwave 任务(训练只单向,测试反向),π0.7(GC)成功,prior 全失败。subgoal image 是关键——世界模型能据反方向文本生成 subgoal。这是"语言跟随强到能对抗数据偏差"的最强证据。</p>
+
+<p><strong>跨本体叠衣</strong>:UR5e 零样本 task progress 85.6% / success 80%,人类 top 2% 操作员首次尝试 90.9% / 80.6%。工业臂上零样本灵巧任务达到人类水平。</p>
+
+<p><strong>Scaling with metadata</strong>:π0.7 with metadata 数据越大越好(即使质量降),without metadata 越大越差。metadata 是异质数据 scaling 的钥匙。</p>
+
+<h2>局限:别替它过度外推</h2>
+
+<p>论文自己承认的:零样本泛化成功率(60-80%)低于 in-distribution(>90%),seen 和 unseen 任务/本体组合有差距;在如此大且多样的数据上,很难确定哪些任务真正 seen vs unseen,数据里可能含相关技能(不同标签或作为其他任务一部分),generalization 可能主要是 remixing 已见技能;context 丰富化依赖 episode metadata 标注质量,speed 是 GT 但 quality 和 mistake 是人工粗标,标注成本未量化。</p>
+
+<p>我们读出的:π0.7 实际是三模型系统(5B VLA + 14B 世界模型 + 4B high-level policy),不是端到端单模型,部署需多卡,世界模型要 4×H100;subgoal 只在 25% batch 加训练,推理时若 always 用 subgoal 可能与训练分布有 mismatch,论文未给 always-subgoal 消融;跨本体叠衣匹配人类是单任务单本体(UR5e)且人类也是零样本首次尝试非最佳表现,泛化到更多本体或更难任务是否仍成立未证;coaching 范式依赖人类实时分步指令,high-level policy 需 coaching 数据训练,完全自主长程新任务仍需先收集 coaching 数据,不是完全 zero-data。</p>
+
+<p>所以,π0.7 是 VLA 路线组合泛化的一个强证据,但它支持的是"context 丰富化 + 数据多样性协同"这个方法论,不等于所有场景都能靠 prompt 解决——它依赖高质量 metadata 标注和大量异质数据,这是它的隐形门槛。</p>
+
+<h2>一句话收束</h2>
+
+<p>π0.7 是一个 5B VLA,靠把 episode metadata、subtask 指令、世界模型生成的 subgoal 图像塞进 prompt,让模型能区分混合质量数据的不同模式,从而把含失败、含 RL specialist 蒸馏的异质数据训成一个会组合泛化的通用 policy。它最有力的论证是 Fig.18,而非某个跑分——没有 metadata 数据越大越差,有 metadata 数据越大越好,即使质量下降。这把数据获取从"精心筛选"变成"来者不拒靠标注",是 VLA 数据方法论的一次实质升级。</p>
+</div></section>
+</main>
+<div class="footer">generated by paper-podcast skill · card.json 是真相源，其它文件是其视图</div>
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+</script>
+</body>
+</html>
