@@ -4,121 +4,176 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111614">
-<title>Paper Podcast — 论文深度解读</title>
+<title>Paper Podcast &mdash; 论文深度解读</title>
 <link rel="alternate" type="application/rss+xml" title="Paper Podcast" href="feed.xml" />
 <style>
 :root {
   --bg:#fafbfa; --paper:#fff; --ink:#17201c; --muted:#65706b;
   --line:#dfe6e2; --accent:#0f766e; --soft:#eaf5f2; --dark:#111614;
+  --danger:#9f2f2f; --warn:#8a5a00;
 }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { margin:0; padding:0; }
 body {
   background:var(--bg); color:var(--ink); line-height:1.6;
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
-  padding-bottom:90px;  /* room for sticky player */
-  padding-bottom:calc(90px + env(safe-area-inset-bottom,0));
+  padding-bottom:100px;
+  padding-bottom:calc(100px + env(safe-area-inset-bottom,0));
 }
 header.hero {
   background:linear-gradient(135deg,#111614,#0f766e);
-  color:#e8f1ee; padding:48px 20px 36px; text-align:center;
+  color:#e8f1ee; padding:40px 20px 28px; text-align:center;
 }
-header.hero h1 { margin:0 0 8px; font-size:26px; letter-spacing:-0.02em; }
-header.hero p { color:#9fb3ac; margin:6px auto 16px; font-size:14px; max-width:520px; }
-.subscribe {
-  display:inline-flex; gap:10px; flex-wrap:wrap; justify-content:center;
-}
+header.hero h1 { margin:0 0 6px; font-size:24px; }
+header.hero p { color:#9fb3ac; margin:4px auto 14px; font-size:13px; max-width:480px; }
+.subscribe { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
 .subscribe a {
-  color:#5eead4; text-decoration:none; font-size:13px;
-  border:1px solid #2a3934; padding:8px 14px; border-radius:20px;
+  color:#5eead4; text-decoration:none; font-size:12px;
+  border:1px solid #2a3934; padding:6px 12px; border-radius:16px;
   background:rgba(255,255,255,0.04);
 }
-.subscribe a:hover { background:rgba(94,234,212,0.1); }
-main { max-width:680px; margin:0 auto; padding:24px 16px 60px; }
+
+nav.tabs {
+  display:flex; background:var(--paper); border-bottom:1px solid var(--line);
+  position:sticky; top:0; z-index:20;
+}
+nav.tabs button {
+  flex:1; background:none; border:none; border-bottom:3px solid transparent;
+  padding:14px; font-size:14px; color:var(--muted); cursor:pointer; font-weight:600;
+  font-family:inherit;
+}
+nav.tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+nav.tabs .queue-count {
+  display:inline-block; background:var(--accent); color:#fff;
+  font-size:10px; border-radius:8px; padding:1px 6px; margin-left:4px; min-width:16px;
+}
+
+main { max-width:680px; margin:0 auto; padding:16px 12px 60px; }
+
 .episode {
-  display:flex; gap:14px; background:var(--paper); border:1px solid var(--line);
-  border-radius:14px; padding:14px; margin-bottom:16px;
+  background:var(--paper); border:1px solid var(--line); border-radius:12px;
+  margin-bottom:12px; overflow:hidden; cursor:pointer;
   transition:box-shadow .15s;
 }
-.episode:hover { box-shadow:0 4px 14px rgba(0,0,0,0.06); }
+.episode:hover { box-shadow:0 4px 12px rgba(0,0,0,0.06); }
+.episode.playing { border-left:3px solid var(--accent); }
+.ep-row { display:flex; gap:12px; padding:12px; }
 .ep-cover {
-  flex-shrink:0; width:84px; height:84px; border-radius:10px; overflow:hidden;
+  flex-shrink:0; width:72px; height:72px; border-radius:8px; overflow:hidden;
   position:relative; display:block;
 }
 .ep-cover img { width:100%; height:100%; object-fit:cover; }
 .cat-badge {
-  position:absolute; bottom:4px; left:4px; background:rgba(15,118,110,0.92);
-  color:#fff; font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px;
-  text-transform:uppercase; letter-spacing:0.04em;
+  position:absolute; bottom:3px; left:3px; background:rgba(15,118,110,0.92);
+  color:#fff; font-size:8px; font-weight:700; padding:1px 5px; border-radius:3px;
+  text-transform:uppercase;
 }
 .ep-body { flex:1; min-width:0; }
-.ep-meta { font-size:12px; color:var(--muted); margin-bottom:4px; }
-.ep-body h2 { margin:0 0 6px; font-size:16px; line-height:1.35; }
+.ep-meta { font-size:11px; color:var(--muted); margin-bottom:3px; }
+.ep-body h2 { margin:0 0 4px; font-size:15px; line-height:1.3; }
 .ep-body h2 a { color:var(--ink); text-decoration:none; }
 .ep-body h2 a:hover { color:var(--accent); }
 .ep-one {
-  margin:0 0 10px; font-size:13px; color:var(--muted); line-height:1.5;
+  margin:0 0 8px; font-size:12px; color:var(--muted); line-height:1.5;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }
-.ep-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.ep-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .play-btn {
   background:var(--accent); color:#fff; border:none; cursor:pointer;
-  padding:8px 14px; border-radius:20px; font-size:13px; font-weight:600;
-  display:inline-flex; align-items:center; gap:6px; font-family:inherit;
+  padding:6px 12px; border-radius:16px; font-size:12px; font-weight:600;
+  display:inline-flex; align-items:center; gap:4px; font-family:inherit;
 }
 .play-btn:hover { background:#0c5f57; }
-.play-btn.playing { background:#9f2f2f; }
-.play-icon { font-size:10px; }
-.read-link { color:var(--accent); text-decoration:none; font-size:13px; font-weight:500; }
+.play-btn.playing { background:var(--danger); }
+.play-btn.playing .play-icon::before { content:'\23F8'; }
+.play-btn:not(.playing) .play-icon::before { content:'\25B6'; }
+.play-icon { font-size:9px; }
+.queue-btn {
+  background:none; border:1px solid var(--line); color:var(--muted);
+  cursor:pointer; padding:5px 10px; border-radius:16px; font-size:11px;
+  font-family:inherit; white-space:nowrap;
+}
+.queue-btn:hover { border-color:var(--accent); color:var(--accent); }
+.queue-btn.in-queue { background:var(--soft); border-color:var(--accent); color:var(--accent); }
+.read-link { color:var(--accent); text-decoration:none; font-size:12px; font-weight:500; }
 .read-link:hover { text-decoration:underline; }
-.ep-tags { margin-top:8px; }
+.ep-tags { margin-top:6px; }
 .tag {
   display:inline-block; background:#f0f2f1; color:var(--muted);
-  font-size:10px; padding:2px 7px; border-radius:3px; margin-right:4px;
+  font-size:9px; padding:1px 6px; border-radius:3px; margin-right:3px;
 }
-.no-audio { color:var(--muted); font-size:12px; font-style:italic; }
+.ep-text {
+  display:none; padding:0 16px 14px; border-top:1px solid var(--line);
+  margin-top:0; font-size:14px; max-height:400px; overflow-y:auto; line-height:1.8;
+}
+.ep-text.open { display:block; }
+.ep-text h1,.ep-text h2,.ep-text h3 { font-size:15px; margin:12px 0 6px; color:var(--accent); }
+.ep-text p { margin:6px 0; }
+.ep-text .loading { color:var(--muted); font-style:italic; }
 
-/* sticky mini player */
+.queue-panel { display:none; }
+.queue-panel.active { display:block; }
+.queue-empty { text-align:center; color:var(--muted); padding:60px 20px; font-size:14px; }
+.queue-item {
+  display:flex; align-items:center; gap:10px; background:var(--paper);
+  border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px;
+}
+.queue-item img { width:40px; height:40px; border-radius:6px; object-fit:cover; flex-shrink:0; }
+.queue-item .qi-body { flex:1; min-width:0; }
+.queue-item .qi-title { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.queue-item .qi-meta { font-size:11px; color:var(--muted); }
+.queue-item .qi-controls { display:flex; gap:4px; }
+.queue-item .qi-btn {
+  background:none; border:1px solid var(--line); cursor:pointer;
+  width:28px; height:28px; border-radius:6px; font-size:12px; color:var(--muted);
+  display:flex; align-items:center; justify-content:center;
+}
+.queue-item .qi-btn:hover { border-color:var(--accent); color:var(--accent); }
+.queue-item .qi-btn:disabled { opacity:0.3; cursor:default; }
+.queue-item .qi-btn.danger:hover { border-color:var(--danger); color:var(--danger); }
+
 .sticky-player {
   position:fixed; bottom:0; left:0; right:0; z-index:100;
   background:var(--dark); color:#e8f1ee;
-  padding:10px 16px; padding-bottom:calc(10px + env(safe-area-inset-bottom,0));
-  box-shadow:0 -4px 16px rgba(0,0,0,0.15);
-  display:none; align-items:center; gap:12px;
+  padding:10px 14px; padding-bottom:calc(10px + env(safe-area-inset-bottom,0));
+  box-shadow:0 -4px 16px rgba(0,0,0,0.2);
+  display:none; align-items:center; gap:10px;
 }
 .sticky-player.show { display:flex; }
-.sticky-player .sp-play {
-  background:#5eead4; color:#111614; border:none; width:40px; height:40px;
-  border-radius:50%; font-size:14px; cursor:pointer; flex-shrink:0;
+.sp-controls { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.sp-btn {
+  background:rgba(255,255,255,0.1); color:#e8f1ee; border:none; cursor:pointer;
+  width:36px; height:36px; border-radius:50%; font-size:13px;
   display:flex; align-items:center; justify-content:center;
 }
-.sticky-player .sp-info { flex:1; min-width:0; }
-.sticky-player .sp-title {
-  font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden;
+.sp-btn:hover { background:rgba(255,255,255,0.2); }
+.sp-btn.main { background:#5eead4; color:#111614; width:42px; height:42px; font-size:15px; }
+.sp-btn.main:hover { background:#7cf5e1; }
+.sp-btn.active { background:var(--accent); color:#fff; }
+.sp-info { flex:1; min-width:0; }
+.sp-title {
+  font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden;
   text-overflow:ellipsis; margin-bottom:4px;
 }
-.sticky-player .sp-progress {
-  height:3px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden;
+.sp-progress { height:3px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden; cursor:pointer; }
+.sp-progress-bar { height:100%; background:#5eead4; width:0%; transition:width .2s linear; }
+.sp-time { font-size:10px; color:#9fb3ac; flex-shrink:0; min-width:60px; text-align:right; }
+.sp-loop {
+  background:none; border:1px solid rgba(255,255,255,0.2); color:#9fb3ac;
+  cursor:pointer; font-size:11px; padding:3px 8px; border-radius:4px; flex-shrink:0;
 }
-.sticky-player .sp-progress-bar {
-  height:100%; background:#5eead4; width:0%; transition:width .1s linear;
-}
-.sticky-player .sp-time { font-size:11px; color:#9fb3ac; flex-shrink:0; }
-.sticky-player .sp-close {
-  background:none; border:none; color:#9fb3ac; cursor:pointer;
-  font-size:18px; padding:0 4px;
-}
-audio.hidden-src { display:none; }
+.sp-loop.on { background:var(--accent); border-color:var(--accent); color:#fff; }
 
-.footer { text-align:center; color:var(--muted); padding:20px; font-size:12px; }
+.footer { text-align:center; color:var(--muted); padding:20px; font-size:11px; }
 .footer a { color:var(--accent); text-decoration:none; }
 
 @media (max-width:480px) {
-  header.hero { padding:36px 16px 28px; }
-  header.hero h1 { font-size:22px; }
-  .episode { padding:12px; gap:10px; }
-  .ep-cover { width:68px; height:68px; }
-  .ep-body h2 { font-size:15px; }
+  header.hero { padding:30px 16px 22px; }
+  header.hero h1 { font-size:20px; }
+  .ep-cover { width:60px; height:60px; }
+  .ep-body h2 { font-size:14px; }
+  .sp-btn { width:32px; height:32px; font-size:11px; }
+  .sp-btn.main { width:38px; height:38px; font-size:13px; }
 }
 </style>
 </head>
@@ -126,400 +181,547 @@ audio.hidden-src { display:none; }
 <header class="hero">
   <h1>Paper Podcast</h1>
   <p>研究论文深度解读。每篇 15 分钟口播，听完脑子里能建出论文架构。</p>
+  <div class="subscribe">
+    <a href="feed.xml">RSS 订阅</a>
+    <a href="https://github.com/guoshaoyang-pku/paper-podcast">GitHub</a>
+  </div>
 </header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="episodes">全部论文</button>
+  <button class="tab-btn" data-tab="queue">我的歌单 <span class="queue-count" id="qc">0</span></button>
+</nav>
+
 <main>
-
-      <article class="episode" data-slug="qwen-vla">
-        <a class="ep-cover" href="qwen-vla/index.html">
-          <img src="qwen-vla/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">VLA</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-05-28</span> · <span class="ep-aff">Alibaba Qwen Team</span>
+  <div id="episodes-panel">
+    
+      <article class="episode" data-slug="qwen-vla" data-date="2026-05-28">
+        <div class="ep-row">
+          <a class="ep-cover" href="qwen-vla/index.html" onclick="event.stopPropagation()">
+            <img src="qwen-vla/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">VLA</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-05-28</span> &middot; <span>Alibaba Qwen Team</span></div>
+            <h2><a href="qwen-vla/index.html" onclick="event.stopPropagation()">Qwen-VLA: Unifying Vision-Language-Action Modeling across Tasks, Environments, and Robot Embodiments</a></h2>
+            <p class="ep-one">把 Qwen3.5-4B VLM 接一个 1.15B DiT flow-matching action expert,用 embodiment-aware prompt(文本描述本体/控制频率/horizon)统一操控、导航、轨迹预测、人类第一视角动作为同一 action-and-trajectory 预测问题,靠四阶段训练(T2A 纯文本→动作解压缩→CPT 多模态→SFT→RL)解决 VLM 已预训练而 DiT 随机初始化的不对称,一个通用模型跨多本体多任务。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="qwen-vla" data-dur="20:02">
+                <span class="play-icon"></span><span class="play-label">播放 20:02</span>
+              </button>
+              <button class="queue-btn" data-slug="qwen-vla" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="qwen-vla/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>unified model</span><span class='tag'>embodiment-aware prompt</span></div>
           </div>
-          <h2><a href="qwen-vla/index.html">Qwen-VLA: Unifying Vision-Language-Action Modeling across Tasks, Environments, and Robot Embodiments</a></h2>
-          <p class="ep-one">把 Qwen3.5-4B VLM 接一个 1.15B DiT flow-matching action expert,用 embodiment-aware prompt(文本描述本体/控制频率/horizon)统一操控、导航、轨迹预测、人类第一视角动作为同一 action-and-trajectory 预测问题,靠四阶段训练(T2A 纯文本→动作解压缩→CPT 多模态→SFT→RL)解决 VLM 已预训练而 DiT 随机初始化的不对称,一个通用模型跨多本体多任务。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="qwen-vla"
-                data-title="Qwen-VLA: Unifying Vision-Language-Action Modeling across Tasks, Environments, and Robot Embodiments"
-                data-src="qwen-vla/audio/podcast.mp3"
-                data-dur="20:02">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 20:02</span>
-        </button>
-            <a class="read-link" href="qwen-vla/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>unified model</span><span class='tag'>embodiment-aware prompt</span></div>
         </div>
+        <div class="ep-text" id="text-qwen-vla"></div>
       </article>
 
-      <article class="episode" data-slug="wam-survey">
-        <a class="ep-cover" href="wam-survey/index.html">
-          <img src="wam-survey/figures/p02.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Survey</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-05-12</span> · <span class="ep-aff">Fudan University · Shanghai Innovation Institute · National University of Singapore</span>
+      <article class="episode" data-slug="wam-survey" data-date="2026-05-12">
+        <div class="ep-row">
+          <a class="ep-cover" href="wam-survey/index.html" onclick="event.stopPropagation()">
+            <img src="wam-survey/figures/p02.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Survey</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-05-12</span> &middot; <span>Fudan University · Shanghai Innovation Institute · National University of Singapore</span></div>
+            <h2><a href="wam-survey/index.html" onclick="event.stopPropagation()">World Action Models: The Next Frontier in Embodied AI</a></h2>
+            <p class="ep-one">第一份系统梳理 World Action Model(WAM)的综述:把&#x27;统一预测未来状态和动作&#x27;这族方法正式定义,拆成 Cascaded vs Joint 两大架构范式,沿生成模态/条件机制/动作解码三维细分,并覆盖数据生态、评测协议、开放挑战——给 WAM 这个快速膨胀的领域一张可导航的地图。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="wam-survey" data-dur="19:31">
+                <span class="play-icon"></span><span class="play-label">播放 19:31</span>
+              </button>
+              <button class="queue-btn" data-slug="wam-survey" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="wam-survey/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>survey</span><span class='tag'>taxonomy</span></div>
           </div>
-          <h2><a href="wam-survey/index.html">World Action Models: The Next Frontier in Embodied AI</a></h2>
-          <p class="ep-one">第一份系统梳理 World Action Model(WAM)的综述:把&#x27;统一预测未来状态和动作&#x27;这族方法正式定义,拆成 Cascaded vs Joint 两大架构范式,沿生成模态/条件机制/动作解码三维细分,并覆盖数据生态、评测协议、开放挑战——给 WAM 这个快速膨胀的领域一张可导航的地图。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="wam-survey"
-                data-title="World Action Models: The Next Frontier in Embodied AI"
-                data-src="wam-survey/audio/podcast.mp3"
-                data-dur="19:31">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 19:31</span>
-        </button>
-            <a class="read-link" href="wam-survey/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>survey</span><span class='tag'>taxonomy</span></div>
         </div>
+        <div class="ep-text" id="text-wam-survey"></div>
       </article>
 
-      <article class="episode" data-slug="harmowam">
-        <a class="ep-cover" href="harmowam/index.html">
-          <img src="harmowam/figures/p02.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Hybrid WAM</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-05-11</span> · <span class="ep-aff">Peking University · Simplexity Robotics · CUHK</span>
+      <article class="episode" data-slug="harmowam" data-date="2026-05-11">
+        <div class="ep-row">
+          <a class="ep-cover" href="harmowam/index.html" onclick="event.stopPropagation()">
+            <img src="harmowam/figures/p02.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Hybrid WAM</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-05-11</span> &middot; <span>Peking University · Simplexity Robotics · CUHK</span></div>
+            <h2><a href="harmowam/index.html" onclick="event.stopPropagation()">HarmoWAM: Harmonizing Generalizable and Precise Manipulation via Adaptive World Action Models</a></h2>
+            <p class="ep-one">把 WAM 的两条旧路线(Imagine-then-Execute 泛化好但不准 / Joint Modeling 准但 OOD 探索崩)用一个共享世界模型 + 两个互补 action expert + 一个过程自适应门控统一进来,transit 用 reactive expert 借世界模型泛化、interaction 用 predictive expert 借隐含 latent 精准对齐,实现泛化和精度同时拿住。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="harmowam" data-dur="17:37">
+                <span class="play-icon"></span><span class="play-label">播放 17:37</span>
+              </button>
+              <button class="queue-btn" data-slug="harmowam" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="harmowam/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>hybrid expert</span><span class='tag'>process-adaptive gating</span></div>
           </div>
-          <h2><a href="harmowam/index.html">HarmoWAM: Harmonizing Generalizable and Precise Manipulation via Adaptive World Action Models</a></h2>
-          <p class="ep-one">把 WAM 的两条旧路线(Imagine-then-Execute 泛化好但不准 / Joint Modeling 准但 OOD 探索崩)用一个共享世界模型 + 两个互补 action expert + 一个过程自适应门控统一进来,transit 用 reactive expert 借世界模型泛化、interaction 用 predictive expert 借隐含 latent 精准对齐,实现泛化和精度同时拿住。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="harmowam"
-                data-title="HarmoWAM: Harmonizing Generalizable and Precise Manipulation via Adaptive World Action Models"
-                data-src="harmowam/audio/podcast.mp3"
-                data-dur="17:37">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 17:37</span>
-        </button>
-            <a class="read-link" href="harmowam/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>hybrid expert</span><span class='tag'>process-adaptive gating</span></div>
         </div>
+        <div class="ep-text" id="text-harmowam"></div>
       </article>
 
-      <article class="episode" data-slug="rl-token-vla">
-        <a class="ep-cover" href="rl-token-vla/index.html">
-          <img src="rl-token-vla/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">VLA</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-04-30</span> · <span class="ep-aff">Physical Intelligence</span>
+      <article class="episode" data-slug="rl-token-vla" data-date="2026-04-30">
+        <div class="ep-row">
+          <a class="ep-cover" href="rl-token-vla/index.html" onclick="event.stopPropagation()">
+            <img src="rl-token-vla/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">VLA</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-04-30</span> &middot; <span>Physical Intelligence</span></div>
+            <h2><a href="rl-token-vla/index.html" onclick="event.stopPropagation()">RL Token: Bootstrapping Online RL with Vision-Language-Action Models</a></h2>
+            <p class="ep-one">给冻结的 π0.6 VLA 训一个&#x27;RL token&#x27;瓶颈表示,在它上面挂一个几层 MLP 的 actor-critic 做 online RL 微调,几小时甚至几分钟真实机器人数据就能把毫米级精密任务的 critical phase 提速 3× 并显著提升成功率。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="rl-token-vla" data-dur="20:24">
+                <span class="play-icon"></span><span class="play-label">播放 20:24</span>
+              </button>
+              <button class="queue-btn" data-slug="rl-token-vla" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="rl-token-vla/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>online RL</span><span class='tag'>fine-tuning</span></div>
           </div>
-          <h2><a href="rl-token-vla/index.html">RL Token: Bootstrapping Online RL with Vision-Language-Action Models</a></h2>
-          <p class="ep-one">给冻结的 π0.6 VLA 训一个&#x27;RL token&#x27;瓶颈表示,在它上面挂一个几层 MLP 的 actor-critic 做 online RL 微调,几小时甚至几分钟真实机器人数据就能把毫米级精密任务的 critical phase 提速 3× 并显著提升成功率。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="rl-token-vla"
-                data-title="RL Token: Bootstrapping Online RL with Vision-Language-Action Models"
-                data-src="rl-token-vla/audio/podcast.mp3"
-                data-dur="20:24">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 20:24</span>
-        </button>
-            <a class="read-link" href="rl-token-vla/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>online RL</span><span class='tag'>fine-tuning</span></div>
         </div>
+        <div class="ep-text" id="text-rl-token-vla"></div>
       </article>
 
-      <article class="episode" data-slug="wam-vs-vla">
-        <a class="ep-cover" href="wam-vs-vla/index.html">
-          <img src="wam-vs-vla/figures/p07.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Evaluation</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-04-30</span> · <span class="ep-aff">Huawei Technologies · University of Toronto</span>
+      <article class="episode" data-slug="wam-vs-vla" data-date="2026-04-30">
+        <div class="ep-row">
+          <a class="ep-cover" href="wam-vs-vla/index.html" onclick="event.stopPropagation()">
+            <img src="wam-vs-vla/figures/p07.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Evaluation</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-04-30</span> &middot; <span>Huawei Technologies · University of Toronto</span></div>
+            <h2><a href="wam-vs-vla/index.html" onclick="event.stopPropagation()">Do World Action Models Generalize Better than VLAs? A Robustness Study</a></h2>
+            <p class="ep-one">在 LIBERO-Plus 和自建 RoboTwin 2.0-Plus 两个扰动基准上系统对比 VLA/WAM/混合三类策略,发现 WAM 在视觉扰动(噪声/光照/布局)上更鲁棒,但相机视角和机器人初始状态仍是硬伤;推理比 π0.5 慢至少 4.8 倍是 WAM 部署的主要障碍。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="wam-vs-vla" data-dur="18:07">
+                <span class="play-icon"></span><span class="play-label">播放 18:07</span>
+              </button>
+              <button class="queue-btn" data-slug="wam-vs-vla" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="wam-vs-vla/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>VLA</span><span class='tag'>robustness study</span></div>
           </div>
-          <h2><a href="wam-vs-vla/index.html">Do World Action Models Generalize Better than VLAs? A Robustness Study</a></h2>
-          <p class="ep-one">在 LIBERO-Plus 和自建 RoboTwin 2.0-Plus 两个扰动基准上系统对比 VLA/WAM/混合三类策略,发现 WAM 在视觉扰动(噪声/光照/布局)上更鲁棒,但相机视角和机器人初始状态仍是硬伤;推理比 π0.5 慢至少 4.8 倍是 WAM 部署的主要障碍。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="wam-vs-vla"
-                data-title="Do World Action Models Generalize Better than VLAs? A Robustness Study"
-                data-src="wam-vs-vla/audio/podcast.mp3"
-                data-dur="18:07">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 18:07</span>
-        </button>
-            <a class="read-link" href="wam-vs-vla/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>VLA</span><span class='tag'>robustness study</span></div>
         </div>
+        <div class="ep-text" id="text-wam-vs-vla"></div>
       </article>
 
-      <article class="episode" data-slug="pi-series">
-        <a class="ep-cover" href="pi-series/index.html">
-          <img src="pi-series/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">VLA</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-04-24</span> · <span class="ep-aff">Physical Intelligence</span>
+      <article class="episode" data-slug="pi-series" data-date="2026-04-24">
+        <div class="ep-row">
+          <a class="ep-cover" href="pi-series/index.html" onclick="event.stopPropagation()">
+            <img src="pi-series/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">VLA</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-04-24</span> &middot; <span>Physical Intelligence</span></div>
+            <h2><a href="pi-series/index.html" onclick="event.stopPropagation()">π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities</a></h2>
+            <p class="ep-one">一个 5B VLA(4B Gemma3 VLM + 860M flow-matching action expert),靠&#x27;把每条轨迹的 episode metadata(速度/质量/是否犯错)+ subtask 指令 + 世界模型生成的 subgoal 图像&#x27;塞进 prompt 做条件,从而能把混合质量(含失败、含 RL specialist 蒸馏)的异质数据训成一个会组合泛化的通用 policy,零样本迁移到新任务/新本体/逆数据偏差指令。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="pi-series" data-dur="18:02">
+                <span class="play-icon"></span><span class="play-label">播放 18:02</span>
+              </button>
+              <button class="queue-btn" data-slug="pi-series" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="pi-series/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>flow matching</span><span class='tag'>context conditioning</span></div>
           </div>
-          <h2><a href="pi-series/index.html">π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities</a></h2>
-          <p class="ep-one">一个 5B VLA(4B Gemma3 VLM + 860M flow-matching action expert),靠&#x27;把每条轨迹的 episode metadata(速度/质量/是否犯错)+ subtask 指令 + 世界模型生成的 subgoal 图像&#x27;塞进 prompt 做条件,从而能把混合质量(含失败、含 RL specialist 蒸馏)的异质数据训成一个会组合泛化的通用 policy,零样本迁移到新任务/新本体/逆数据偏差指令。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="pi-series"
-                data-title="π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities"
-                data-src="pi-series/audio/podcast.mp3"
-                data-dur="18:02">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 18:02</span>
-        </button>
-            <a class="read-link" href="pi-series/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>flow matching</span><span class='tag'>context conditioning</span></div>
         </div>
+        <div class="ep-text" id="text-pi-series"></div>
       </article>
 
-      <article class="episode" data-slug="vla-world">
-        <a class="ep-cover" href="vla-world/index.html">
-          <img src="vla-world/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Cascaded WAM</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-04-10</span> · <span class="ep-aff">Shanghai Jiao Tong University (MoE Key Lab of AI, AI Institute) · Huawei Central Research Institute</span>
+      <article class="episode" data-slug="vla-world" data-date="2026-04-10">
+        <div class="ep-row">
+          <a class="ep-cover" href="vla-world/index.html" onclick="event.stopPropagation()">
+            <img src="vla-world/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Cascaded WAM</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-04-10</span> &middot; <span>Shanghai Jiao Tong University (MoE Key Lab of AI, AI Institute) · Huawei Central Research Institute</span></div>
+            <h2><a href="vla-world/index.html" onclick="event.stopPropagation()">VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving</a></h2>
+            <p class="ep-one">把自动驾驶的 VLA 和世界模型合并:先用短期轨迹预测引导生成下一帧未来图像,再对这个自己想象出来的未来帧做反思推理修正长期轨迹,用 Qwen2-VL-2B + VQGAN 自回归出视觉 token,三阶段(预训练→SFT→GRPO)训练。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="vla-world" data-dur="16:38">
+                <span class="play-icon"></span><span class="play-label">播放 16:38</span>
+              </button>
+              <button class="queue-btn" data-slug="vla-world" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="vla-world/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>autonomous driving</span><span class='tag'>VLA world model</span><span class='tag'>reflective reasoning</span></div>
           </div>
-          <h2><a href="vla-world/index.html">VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving</a></h2>
-          <p class="ep-one">把自动驾驶的 VLA 和世界模型合并:先用短期轨迹预测引导生成下一帧未来图像,再对这个自己想象出来的未来帧做反思推理修正长期轨迹,用 Qwen2-VL-2B + VQGAN 自回归出视觉 token,三阶段(预训练→SFT→GRPO)训练。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="vla-world"
-                data-title="VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving"
-                data-src="vla-world/audio/podcast.mp3"
-                data-dur="16:38">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 16:38</span>
-        </button>
-            <a class="read-link" href="vla-world/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>autonomous driving</span><span class='tag'>VLA world model</span><span class='tag'>reflective reasoning</span></div>
         </div>
+        <div class="ep-text" id="text-vla-world"></div>
       </article>
 
-      <article class="episode" data-slug="dreamzero">
-        <a class="ep-cover" href="dreamzero/index.html">
-          <img src="dreamzero/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Joint WAM</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-02-19</span> · <span class="ep-aff">NVIDIA</span>
+      <article class="episode" data-slug="dreamzero" data-date="2026-02-19">
+        <div class="ep-row">
+          <a class="ep-cover" href="dreamzero/index.html" onclick="event.stopPropagation()">
+            <img src="dreamzero/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Joint WAM</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-02-19</span> &middot; <span>NVIDIA</span></div>
+            <h2><a href="dreamzero/index.html" onclick="event.stopPropagation()">World Action Models are Zero-shot Policies</a></h2>
+            <p class="ep-one">把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="dreamzero" data-dur="15:15">
+                <span class="play-icon"></span><span class="play-label">播放 15:15</span>
+              </button>
+              <button class="queue-btn" data-slug="dreamzero" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="dreamzero/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>video diffusion</span><span class='tag'>autoregressive</span></div>
           </div>
-          <h2><a href="dreamzero/index.html">World Action Models are Zero-shot Policies</a></h2>
-          <p class="ep-one">把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="dreamzero"
-                data-title="World Action Models are Zero-shot Policies"
-                data-src="dreamzero/audio/podcast.mp3"
-                data-dur="15:15">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 15:15</span>
-        </button>
-            <a class="read-link" href="dreamzero/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>WAM</span><span class='tag'>video diffusion</span><span class='tag'>autoregressive</span></div>
         </div>
+        <div class="ep-text" id="text-dreamzero"></div>
       </article>
 
-      <article class="episode" data-slug="bagel-vla">
-        <a class="ep-cover" href="bagel-vla/index.html">
-          <img src="bagel-vla/figures/p02.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Cascaded WAM</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2026-02-12</span> · <span class="ep-aff">Tsinghua University · ByteDance Seed</span>
+      <article class="episode" data-slug="bagel-vla" data-date="2026-02-12">
+        <div class="ep-row">
+          <a class="ep-cover" href="bagel-vla/index.html" onclick="event.stopPropagation()">
+            <img src="bagel-vla/figures/p02.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Cascaded WAM</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2026-02-12</span> &middot; <span>Tsinghua University · ByteDance Seed</span></div>
+            <h2><a href="bagel-vla/index.html" onclick="event.stopPropagation()">BagelVLA: Enhancing Long-Horizon Manipulation via Interleaved Vision-Language-Action Generation</a></h2>
+            <p class="ep-one">在 Bagel 统一理解+生成 MoT 底座上接一个 2B action expert,把&#x27;语言规划→关键帧预测→动作生成&#x27;三步显式交错进一条序列,并用 Residual Flow Guidance(以当前帧为初始噪声做单步去噪)把视觉前瞻的延迟从 6 秒压到 1.23 秒。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="bagel-vla" data-dur="18:28">
+                <span class="play-icon"></span><span class="play-label">播放 18:28</span>
+              </button>
+              <button class="queue-btn" data-slug="bagel-vla" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="bagel-vla/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>interleaved planning</span><span class='tag'>Mixture-of-Transformers</span><span class='tag'>dual flow matching</span></div>
           </div>
-          <h2><a href="bagel-vla/index.html">BagelVLA: Enhancing Long-Horizon Manipulation via Interleaved Vision-Language-Action Generation</a></h2>
-          <p class="ep-one">在 Bagel 统一理解+生成 MoT 底座上接一个 2B action expert,把&#x27;语言规划→关键帧预测→动作生成&#x27;三步显式交错进一条序列,并用 Residual Flow Guidance(以当前帧为初始噪声做单步去噪)把视觉前瞻的延迟从 6 秒压到 1.23 秒。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="bagel-vla"
-                data-title="BagelVLA: Enhancing Long-Horizon Manipulation via Interleaved Vision-Language-Action Generation"
-                data-src="bagel-vla/audio/podcast.mp3"
-                data-dur="18:28">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 18:28</span>
-        </button>
-            <a class="read-link" href="bagel-vla/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>interleaved planning</span><span class='tag'>Mixture-of-Transformers</span><span class='tag'>dual flow matching</span></div>
         </div>
+        <div class="ep-text" id="text-bagel-vla"></div>
       </article>
 
-      <article class="episode" data-slug="motus">
-        <a class="ep-cover" href="motus/index.html">
-          <img src="motus/figures/p02.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">Joint WAM</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2025-12-25</span> · <span class="ep-aff">Tsinghua University (THBI/BNRist, Tsinghua-Bosch JMLC) · Peking University · Horizon Robotics</span>
+      <article class="episode" data-slug="motus" data-date="2025-12-25">
+        <div class="ep-row">
+          <a class="ep-cover" href="motus/index.html" onclick="event.stopPropagation()">
+            <img src="motus/figures/p02.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">Joint WAM</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2025-12-25</span> &middot; <span>Tsinghua University (THBI/BNRist, Tsinghua-Bosch JMLC) · Peking University · Horizon Robotics</span></div>
+            <h2><a href="motus/index.html" onclick="event.stopPropagation()">Motus: A Unified Latent Action World Model</a></h2>
+            <p class="ep-one">用一个 Mixture-of-Transformers 把 VLM(理解)、Wan2.2(视频生成)、Action 专家三路并到一个模型里,靠 UniDiffuser 式调度在 VLA/WM/IDM/VGM/Video-Action 联合预测五种模式间切换;并用光流编码的 latent action 让无动作标签的海量视频也能预训练 action 专家。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="motus" data-dur="17:16">
+                <span class="play-icon"></span><span class="play-label">播放 17:16</span>
+              </button>
+              <button class="queue-btn" data-slug="motus" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="motus/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>unified model</span><span class='tag'>Mixture-of-Transformers</span><span class='tag'>UniDiffuser</span></div>
           </div>
-          <h2><a href="motus/index.html">Motus: A Unified Latent Action World Model</a></h2>
-          <p class="ep-one">用一个 Mixture-of-Transformers 把 VLM(理解)、Wan2.2(视频生成)、Action 专家三路并到一个模型里,靠 UniDiffuser 式调度在 VLA/WM/IDM/VGM/Video-Action 联合预测五种模式间切换;并用光流编码的 latent action 让无动作标签的海量视频也能预训练 action 专家。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="motus"
-                data-title="Motus: A Unified Latent Action World Model"
-                data-src="motus/audio/podcast.mp3"
-                data-dur="17:16">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 17:16</span>
-        </button>
-            <a class="read-link" href="motus/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>unified model</span><span class='tag'>Mixture-of-Transformers</span><span class='tag'>UniDiffuser</span></div>
         </div>
+        <div class="ep-text" id="text-motus"></div>
       </article>
 
-      <article class="episode" data-slug="fast">
-        <a class="ep-cover" href="fast/index.html">
-          <img src="fast/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">VLA</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2025-01-16</span> · <span class="ep-aff">Physical Intelligence · UC Berkeley · Stanford</span>
+      <article class="episode" data-slug="fast" data-date="2025-01-16">
+        <div class="ep-row">
+          <a class="ep-cover" href="fast/index.html" onclick="event.stopPropagation()">
+            <img src="fast/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">VLA</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2025-01-16</span> &middot; <span>Physical Intelligence · UC Berkeley · Stanford</span></div>
+            <h2><a href="fast/index.html" onclick="event.stopPropagation()">FAST: Efficient Action Tokenization for Vision-Language-Action Models</a></h2>
+            <p class="ep-one">用离散余弦变换(DCT)+BPE 把高频机器人动作序列压缩成短 token,让自回归 VLA 第一次能在灵巧高频任务上训起来,并且比 diffusion VLA 训练快 5 倍。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="fast" data-dur="18:03">
+                <span class="play-icon"></span><span class="play-label">播放 18:03</span>
+              </button>
+              <button class="queue-btn" data-slug="fast" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="fast/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>action tokenization</span><span class='tag'>DCT</span></div>
           </div>
-          <h2><a href="fast/index.html">FAST: Efficient Action Tokenization for Vision-Language-Action Models</a></h2>
-          <p class="ep-one">用离散余弦变换(DCT)+BPE 把高频机器人动作序列压缩成短 token,让自回归 VLA 第一次能在灵巧高频任务上训起来,并且比 diffusion VLA 训练快 5 倍。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="fast"
-                data-title="FAST: Efficient Action Tokenization for Vision-Language-Action Models"
-                data-src="fast/audio/podcast.mp3"
-                data-dur="18:03">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 18:03</span>
-        </button>
-            <a class="read-link" href="fast/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>action tokenization</span><span class='tag'>DCT</span></div>
         </div>
+        <div class="ep-text" id="text-fast"></div>
       </article>
 
-      <article class="episode" data-slug="openvla">
-        <a class="ep-cover" href="openvla/index.html">
-          <img src="openvla/figures/p01.png" alt="cover" loading="lazy"/>
-          <span class="cat-badge">VLA</span>
-        </a>
-        <div class="ep-body">
-          <div class="ep-meta">
-            <span class="ep-date">2024-09-05</span> · <span class="ep-aff">Stanford · UC Berkeley · Toyota Research Institute · Google DeepMind · Physical Intelligence · MIT</span>
+      <article class="episode" data-slug="openvla" data-date="2024-09-05">
+        <div class="ep-row">
+          <a class="ep-cover" href="openvla/index.html" onclick="event.stopPropagation()">
+            <img src="openvla/figures/p01.png" alt="cover" loading="lazy"/>
+            <span class="cat-badge">VLA</span>
+          </a>
+          <div class="ep-body">
+            <div class="ep-meta"><span>2024-09-05</span> &middot; <span>Stanford · UC Berkeley · Toyota Research Institute · Google DeepMind · Physical Intelligence · MIT</span></div>
+            <h2><a href="openvla/index.html" onclick="event.stopPropagation()">OpenVLA: An Open-Source Vision-Language-Action Model</a></h2>
+            <p class="ep-one">把 Prismatic-7B VLM(DINOv2+SigLIP 融合视觉编码器 + Llama 2 7B)在 970k Open X-Embodiment 机器人轨迹上 fine-tune,把 7 维连续动作离散成 256 个 token 塞进 LLM 词表用 next-token 预测训,一个 7B 开源 VLA 在 29 任务上超 55B 闭源 RT-2-X 16.5 个点,且支持 LoRA(1.4% 参数)和 4bit 量化在消费级 GPU 上 fine-tune 和推理。</p>
+            <div class="ep-actions">
+              <button class="play-btn" data-slug="openvla" data-dur="16:46">
+                <span class="play-icon"></span><span class="play-label">播放 16:46</span>
+              </button>
+              <button class="queue-btn" data-slug="openvla" title="加入歌单">＋歌单</button>
+              <a class="read-link" href="openvla/index.html" onclick="event.stopPropagation()">读全文 &rarr;</a>
+            </div>
+            <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>open-source</span><span class='tag'>Llama 2</span></div>
           </div>
-          <h2><a href="openvla/index.html">OpenVLA: An Open-Source Vision-Language-Action Model</a></h2>
-          <p class="ep-one">把 Prismatic-7B VLM(DINOv2+SigLIP 融合视觉编码器 + Llama 2 7B)在 970k Open X-Embodiment 机器人轨迹上 fine-tune,把 7 维连续动作离散成 256 个 token 塞进 LLM 词表用 next-token 预测训,一个 7B 开源 VLA 在 29 任务上超 55B 闭源 RT-2-X 16.5 个点,且支持 LoRA(1.4% 参数)和 4bit 量化在消费级 GPU 上 fine-tune 和推理。</p>
-          <div class="ep-actions">
-            
-        <button class="play-btn" data-slug="openvla"
-                data-title="OpenVLA: An Open-Source Vision-Language-Action Model"
-                data-src="openvla/audio/podcast.mp3"
-                data-dur="16:46">
-          <span class="play-icon">▶</span>
-          <span class="play-label">播放 16:46</span>
-        </button>
-            <a class="read-link" href="openvla/index.html">读全文 →</a>
-          </div>
-          <div class="ep-tags"><span class='tag'>VLA</span><span class='tag'>open-source</span><span class='tag'>Llama 2</span></div>
         </div>
+        <div class="ep-text" id="text-openvla"></div>
       </article>
 
+  </div>
+  <div id="queue-panel" class="queue-panel">
+    <div id="queue-list"></div>
+  </div>
 </main>
 
 <div class="sticky-player" id="stickyPlayer">
-  <button class="sp-play" id="spPlay">▶</button>
+  <div class="sp-controls">
+    <button class="sp-btn" id="spPrev" title="上一首">&#9198;</button>
+    <button class="sp-btn main" id="spPlay">&#9654;</button>
+    <button class="sp-btn" id="spNext" title="下一首">&#9197;</button>
+  </div>
   <div class="sp-info">
-    <div class="sp-title" id="spTitle">—</div>
-    <div class="sp-progress"><div class="sp-progress-bar" id="spBar"></div></div>
+    <div class="sp-title" id="spTitle">&mdash;</div>
+    <div class="sp-progress" id="spProgress"><div class="sp-progress-bar" id="spBar"></div></div>
   </div>
   <span class="sp-time" id="spTime">0:00</span>
-  <button class="sp-close" id="spClose">✕</button>
+  <button class="sp-loop" id="spLoop" title="单曲循环">&#128257;</button>
+  <button class="sp-btn" id="spClose" title="关闭">&times;</button>
 </div>
-<audio class="hidden-src" id="hiddenAudio" preload="metadata"></audio>
+<audio id="audio" preload="metadata"></audio>
 
 <div class="footer">
-  generated by <a href="https://github.com/guoshaoyang-pku/paper-podcast">paper-podcast</a> ·
-  <a href="feed.xml">RSS feed</a>
+  <a href="https://github.com/guoshaoyang-pku/paper-podcast">paper-podcast</a> &middot;
+  <a href="feed.xml">RSS</a> &middot;
+  锁屏后台播放请用<a href="feed.xml">播客 app 订阅</a>
 </div>
 
 <script>
 (function(){
-  const audio = document.getElementById('hiddenAudio');
+  const EPS = [{"slug": "qwen-vla", "title": "Qwen-VLA: Unifying Vision-Language-Action Modeling across Tasks, Environments, and Robot Embodiments", "authors": "Qwen Team", "affiliation": "Alibaba Qwen Team", "date": "2026-05-28", "arxiv": "2605.30280", "one_liner": "把 Qwen3.5-4B VLM 接一个 1.15B DiT flow-matching action expert,用 embodiment-aware prompt(文本描述本体/控制频率/horizon)统一操控、导航、轨迹预测、人类第一视角动作为同一 action-and-trajectory 预测问题,靠四阶段训练(T2A 纯文本→动作解压缩→CPT 多模态→SFT→RL)解决 VLM 已预训练而 DiT 随机初始化的不对称,一个通用模型跨多本体多任务。", "category": "VLA", "tags": ["VLA", "unified model", "embodiment-aware prompt", "flow matching", "DiT action expert", "Qwen3.5", "cross-embodiment", "manipulation", "navigation", "T2A pretraining", "Qwen", "Alibaba"], "has_audio": true, "duration_sec": 1202.64, "duration_str": "20:02", "cover": "figures/p01.png"}, {"slug": "wam-survey", "title": "World Action Models: The Next Frontier in Embodied AI", "authors": "Siyin Wang, Junhao Shi et al.", "affiliation": "Fudan University · Shanghai Innovation Institute · National University of Singapore", "date": "2026-05-12", "arxiv": "2605.12090", "one_liner": "第一份系统梳理 World Action Model(WAM)的综述:把'统一预测未来状态和动作'这族方法正式定义,拆成 Cascaded vs Joint 两大架构范式,沿生成模态/条件机制/动作解码三维细分,并覆盖数据生态、评测协议、开放挑战——给 WAM 这个快速膨胀的领域一张可导航的地图。", "category": "Survey", "tags": ["WAM", "survey", "taxonomy", "Cascaded WAM", "Joint WAM", "world model", "VLA", "video prior", "Fudan", "MOSS"], "has_audio": true, "duration_sec": 1171.248, "duration_str": "19:31", "cover": "figures/p02.png"}, {"slug": "harmowam", "title": "HarmoWAM: Harmonizing Generalizable and Precise Manipulation via Adaptive World Action Models", "authors": "Qiuxuan Feng, Jiale Yu et al.", "affiliation": "Peking University · Simplexity Robotics · CUHK", "date": "2026-05-11", "arxiv": "2605.10942", "one_liner": "把 WAM 的两条旧路线(Imagine-then-Execute 泛化好但不准 / Joint Modeling 准但 OOD 探索崩)用一个共享世界模型 + 两个互补 action expert + 一个过程自适应门控统一进来,transit 用 reactive expert 借世界模型泛化、interaction 用 predictive expert 借隐含 latent 精准对齐,实现泛化和精度同时拿住。", "category": "Hybrid WAM", "tags": ["WAM", "hybrid expert", "process-adaptive gating", "Wan2.2", "diffusion policy", "inverse dynamics", "Franka", "OOD generalization", "PKU"], "has_audio": true, "duration_sec": 1057.032, "duration_str": "17:37", "cover": "figures/p02.png"}, {"slug": "rl-token-vla", "title": "RL Token: Bootstrapping Online RL with Vision-Language-Action Models", "authors": "Charles Xu, Jost Tobias Springenberg et al.", "affiliation": "Physical Intelligence", "date": "2026-04-30", "arxiv": "2604.23073", "one_liner": "给冻结的 π0.6 VLA 训一个'RL token'瓶颈表示,在它上面挂一个几层 MLP 的 actor-critic 做 online RL 微调,几小时甚至几分钟真实机器人数据就能把毫米级精密任务的 critical phase 提速 3× 并显著提升成功率。", "category": "VLA", "tags": ["VLA", "online RL", "fine-tuning", "actor-critic", "RL token", "bottleneck representation", "chunked actions", "π0.6", "Physical Intelligence", "precision manipulation"], "has_audio": true, "duration_sec": 1224.504, "duration_str": "20:24", "cover": "figures/p01.png"}, {"slug": "wam-vs-vla", "title": "Do World Action Models Generalize Better than VLAs? A Robustness Study", "authors": "Zhanguang Zhang, Zhiyuan Li et al.", "affiliation": "Huawei Technologies · University of Toronto", "date": "2026-04-30", "arxiv": "2603.22078", "one_liner": "在 LIBERO-Plus 和自建 RoboTwin 2.0-Plus 两个扰动基准上系统对比 VLA/WAM/混合三类策略,发现 WAM 在视觉扰动(噪声/光照/布局)上更鲁棒,但相机视角和机器人初始状态仍是硬伤;推理比 π0.5 慢至少 4.8 倍是 WAM 部署的主要障碍。", "category": "Evaluation", "tags": ["WAM", "VLA", "robustness study", "benchmark", "LIBERO-Plus", "RoboTwin", "perturbation", "video prior", "Huawei", "comparison"], "has_audio": true, "duration_sec": 1087.584, "duration_str": "18:07", "cover": "figures/p07.png"}, {"slug": "pi-series", "title": "π0.7: A Steerable Generalist Robotic Foundation Model with Emergent Capabilities", "authors": "Physical Intelligence, Bo Ai et al.", "affiliation": "Physical Intelligence", "date": "2026-04-24", "arxiv": "2604.15483", "one_liner": "一个 5B VLA(4B Gemma3 VLM + 860M flow-matching action expert),靠'把每条轨迹的 episode metadata(速度/质量/是否犯错)+ subtask 指令 + 世界模型生成的 subgoal 图像'塞进 prompt 做条件,从而能把混合质量(含失败、含 RL specialist 蒸馏)的异质数据训成一个会组合泛化的通用 policy,零样本迁移到新任务/新本体/逆数据偏差指令。", "category": "VLA", "tags": ["VLA", "flow matching", "context conditioning", "episode metadata", "subgoal image", "BAGEL", "Gemma3", "cross-embodiment", "compositional generalization", "Physical Intelligence", "coaching"], "has_audio": true, "duration_sec": 1082.904, "duration_str": "18:02", "cover": "figures/p01.png"}, {"slug": "vla-world", "title": "VLA-World: Learning Vision-Language-Action World Models for Autonomous Driving", "authors": "Guoqing Wang, Pin Tang et al.", "affiliation": "Shanghai Jiao Tong University (MoE Key Lab of AI, AI Institute) · Huawei Central Research Institute", "date": "2026-04-10", "arxiv": "2604.09059", "one_liner": "把自动驾驶的 VLA 和世界模型合并:先用短期轨迹预测引导生成下一帧未来图像,再对这个自己想象出来的未来帧做反思推理修正长期轨迹,用 Qwen2-VL-2B + VQGAN 自回归出视觉 token,三阶段(预训练→SFT→GRPO)训练。", "category": "Cascaded WAM", "tags": ["autonomous driving", "VLA world model", "reflective reasoning", "GRPO", "multi-view generation", "VQGAN", "Qwen2-VL", "nuScenes", "trajectory planning", "SJTU", "Huawei"], "has_audio": true, "duration_sec": 998.64, "duration_str": "16:38", "cover": "figures/p01.png"}, {"slug": "dreamzero", "title": "World Action Models are Zero-shot Policies", "authors": "Seonghyeon Ye, Yunhao Ge et al.", "affiliation": "NVIDIA", "date": "2026-02-19", "arxiv": "2602.15922", "one_liner": "把 14B video diffusion 模型改造成同时生成未来视频和动作的 World Action Model,用 inverse-dynamics 视角让 video prior 直接成为 policy,并通过系统优化把它压到 7Hz 实时闭环。", "category": "Joint WAM", "tags": ["WAM", "video diffusion", "autoregressive", "flow matching", "cross-embodiment", "KV-cache", "NVIDIA", "joint world-action"], "has_audio": true, "duration_sec": 915.792, "duration_str": "15:15", "cover": "figures/p01.png"}, {"slug": "bagel-vla", "title": "BagelVLA: Enhancing Long-Horizon Manipulation via Interleaved Vision-Language-Action Generation", "authors": "Yucheng Hu, Jianke Zhang et al.", "affiliation": "Tsinghua University · ByteDance Seed", "date": "2026-02-12", "arxiv": "2602.09849", "one_liner": "在 Bagel 统一理解+生成 MoT 底座上接一个 2B action expert,把'语言规划→关键帧预测→动作生成'三步显式交错进一条序列,并用 Residual Flow Guidance(以当前帧为初始噪声做单步去噪)把视觉前瞻的延迟从 6 秒压到 1.23 秒。", "category": "Cascaded WAM", "tags": ["interleaved planning", "Mixture-of-Transformers", "dual flow matching", "Residual Flow Guidance", "long-horizon manipulation", "Bagel", "keyframe prediction", "Tsinghua", "ByteDance"], "has_audio": true, "duration_sec": 1108.92, "duration_str": "18:28", "cover": "figures/p02.png"}, {"slug": "motus", "title": "Motus: A Unified Latent Action World Model", "authors": "Hongzhe Bi, Hengkai Tan et al.", "affiliation": "Tsinghua University (THBI/BNRist, Tsinghua-Bosch JMLC) · Peking University · Horizon Robotics", "date": "2025-12-25", "arxiv": "2512.13030", "one_liner": "用一个 Mixture-of-Transformers 把 VLM(理解)、Wan2.2(视频生成)、Action 专家三路并到一个模型里,靠 UniDiffuser 式调度在 VLA/WM/IDM/VGM/Video-Action 联合预测五种模式间切换;并用光流编码的 latent action 让无动作标签的海量视频也能预训练 action 专家。", "category": "Joint WAM", "tags": ["unified model", "Mixture-of-Transformers", "UniDiffuser", "latent action", "optical flow", "rectified flow", "cross-embodiment", "Wan2.2", "VLA", "world model", "IDM", "Tsinghua"], "has_audio": true, "duration_sec": 1036.08, "duration_str": "17:16", "cover": "figures/p02.png"}, {"slug": "fast", "title": "FAST: Efficient Action Tokenization for Vision-Language-Action Models", "authors": "Karl Pertsch, Kyle Stachowicz et al.", "affiliation": "Physical Intelligence · UC Berkeley · Stanford", "date": "2025-01-16", "arxiv": "2501.09747", "one_liner": "用离散余弦变换(DCT)+BPE 把高频机器人动作序列压缩成短 token,让自回归 VLA 第一次能在灵巧高频任务上训起来,并且比 diffusion VLA 训练快 5 倍。", "category": "VLA", "tags": ["VLA", "action tokenization", "DCT", "BPE", "autoregressive", "high-frequency control", "π0", "Physical Intelligence", "compression"], "has_audio": true, "duration_sec": 1083.936, "duration_str": "18:03", "cover": "figures/p01.png"}, {"slug": "openvla", "title": "OpenVLA: An Open-Source Vision-Language-Action Model", "authors": "Moo Jin Kim, Karl Pertsch et al.", "affiliation": "Stanford · UC Berkeley · Toyota Research Institute · Google DeepMind · Physical Intelligence · MIT", "date": "2024-09-05", "arxiv": "2406.09246", "one_liner": "把 Prismatic-7B VLM(DINOv2+SigLIP 融合视觉编码器 + Llama 2 7B)在 970k Open X-Embodiment 机器人轨迹上 fine-tune,把 7 维连续动作离散成 256 个 token 塞进 LLM 词表用 next-token 预测训,一个 7B 开源 VLA 在 29 任务上超 55B 闭源 RT-2-X 16.5 个点,且支持 LoRA(1.4% 参数)和 4bit 量化在消费级 GPU 上 fine-tune 和推理。", "category": "VLA", "tags": ["VLA", "open-source", "Llama 2", "DINOv2", "SigLIP", "Prismatic", "action token", "Open X-Embodiment", "LoRA", "quantization", "consumer GPU", "Stanford", "Berkeley"], "has_audio": true, "duration_sec": 1006.776, "duration_str": "16:46", "cover": "figures/p01.png"}];
+  const BASE_URL = 'https://guoshaoyang-pku.github.io/paper-podcast';
+  const audio = document.getElementById('audio');
   const player = document.getElementById('stickyPlayer');
-  const playBtn = document.getElementById('spPlay');
+  const spPlay = document.getElementById('spPlay');
   const spTitle = document.getElementById('spTitle');
   const spBar = document.getElementById('spBar');
   const spTime = document.getElementById('spTime');
+  const spProgress = document.getElementById('spProgress');
+  const spLoop = document.getElementById('spLoop');
   const spClose = document.getElementById('spClose');
+  const spPrev = document.getElementById('spPrev');
+  const spNext = document.getElementById('spNext');
+  const qc = document.getElementById('qc');
+
   let currentSlug = null;
+  let loop = false;
+  let queue = JSON.parse(localStorage.getItem('pp_queue') || '[]');
 
   function fmt(s){
     s=Math.floor(s); const m=Math.floor(s/60); const r=s%60;
     return m+':'+(r<10?'0':'')+r;
   }
+  function findEp(slug){ return EPS.find(e=>e.slug===slug); }
+
+  function updateQueueUI(){
+    qc.textContent = queue.length;
+    document.querySelectorAll('.queue-btn').forEach(b=>{
+      b.classList.toggle('in-queue', queue.includes(b.dataset.slug));
+      b.textContent = queue.includes(b.dataset.slug) ? '\u2713已加入' : '\uff0b歌单';
+    });
+    const ql = document.getElementById('queue-list');
+    if(queue.length === 0){
+      ql.innerHTML = '<div class="queue-empty">歌单为空。点击论文卡片上的"\uff0b歌单"添加。</div>';
+      return;
+    }
+    ql.innerHTML = queue.map((slug, i) => {
+      const e = findEp(slug); if(!e) return '';
+      return '<div class="queue-item" data-slug="'+slug+'">' +
+        '<img src="'+e.slug+'/'+e.cover+'" alt="">' +
+        '<div class="qi-body"><div class="qi-title">'+e.title+'</div>' +
+        '<div class="qi-meta">'+e.duration_str+' &middot; '+e.affiliation+'</div></div>' +
+        '<div class="qi-controls">' +
+        '<button class="qi-btn" onclick="moveQueue('+i+',-1)" '+(i===0?'disabled':'')+'>\u2191</button>' +
+        '<button class="qi-btn" onclick="moveQueue('+i+',1)" '+(i===queue.length-1?'disabled':'')+'>\u2193</button>' +
+        '<button class="qi-btn" onclick="playFromQueue('+i+')">\u25B6</button>' +
+        '<button class="qi-btn danger" onclick="removeFromQueue('+i+')">\u00D7</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function toggleQueue(slug){
+    const idx = queue.indexOf(slug);
+    if(idx >= 0) queue.splice(idx, 1);
+    else queue.push(slug);
+    localStorage.setItem('pp_queue', JSON.stringify(queue));
+    updateQueueUI();
+  }
+  window.toggleQueue = toggleQueue;
+
+  window.moveQueue = function(idx, dir){
+    const ni = idx + dir;
+    if(ni < 0 || ni >= queue.length) return;
+    const tmp = queue[idx]; queue[idx] = queue[ni]; queue[ni] = tmp;
+    localStorage.setItem('pp_queue', JSON.stringify(queue));
+    updateQueueUI();
+  };
+  window.removeFromQueue = function(idx){
+    queue.splice(idx, 1);
+    localStorage.setItem('pp_queue', JSON.stringify(queue));
+    updateQueueUI();
+  };
+  window.playFromQueue = function(idx){
+    const slug = queue[idx];
+    if(slug) play(slug);
+  };
+
+  function play(slug){
+    const ep = findEp(slug);
+    if(!ep || !ep.has_audio) return;
+    if(currentSlug === slug && !audio.paused){
+      audio.pause(); return;
+    }
+    audio.src = slug + '/audio/podcast.mp3';
+    spTitle.textContent = ep.title;
+    player.classList.add('show');
+    currentSlug = slug;
+    document.querySelectorAll('.episode').forEach(el=>{
+      el.classList.toggle('playing', el.dataset.slug === slug);
+      const btn = el.querySelector('.play-btn');
+      if(btn) btn.classList.toggle('playing', el.dataset.slug === slug);
+    });
+    audio.play();
+    updateMediaSession(ep);
+  }
+  window.play = play;
+
+  function updateMediaSession(ep){
+    if(!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: ep.title,
+        artist: ep.affiliation,
+        album: 'Paper Podcast',
+        artwork: [{src: BASE_URL + '/' + ep.slug + '/' + ep.cover, sizes: '512x512', type: 'image/png'}]
+      });
+      navigator.mediaSession.setActionHandler('play', () => audio.play());
+      navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+      navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+    } catch(e) {}
+  }
+
+  function playNext(){
+    if(loop && currentSlug){
+      audio.currentTime = 0; audio.play(); return;
+    }
+    const qi = queue.indexOf(currentSlug);
+    if(qi >= 0 && qi < queue.length - 1){
+      play(queue[qi + 1]); return;
+    }
+    const ei = EPS.findIndex(e=>e.slug===currentSlug);
+    if(ei >= 0 && ei < EPS.length - 1){
+      play(EPS[ei + 1].slug);
+    } else if(loop && EPS.length > 0) {
+      play(EPS[0].slug);
+    }
+  }
+  function playPrev(){
+    const ei = EPS.findIndex(e=>e.slug===currentSlug);
+    if(ei > 0) play(EPS[ei - 1].slug);
+  }
 
   document.querySelectorAll('.play-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const slug = btn.dataset.slug;
-      const src = btn.dataset.src;
-      const title = btn.dataset.title;
-      const dur = btn.dataset.dur;
-      if (currentSlug === slug && !audio.paused) {
-        audio.pause();
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      play(btn.dataset.slug);
+    });
+  });
+  document.querySelectorAll('.queue-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleQueue(btn.dataset.slug);
+    });
+  });
+
+  document.querySelectorAll('.episode').forEach(el => {
+    el.addEventListener('click', () => {
+      const slug = el.dataset.slug;
+      const textDiv = document.getElementById('text-' + slug);
+      if(textDiv.classList.contains('open')){
+        textDiv.classList.remove('open');
         return;
       }
-      audio.src = src;
-      spTitle.textContent = title;
-      player.classList.add('show');
-      currentSlug = slug;
-      // reset all btn states
-      document.querySelectorAll('.play-btn').forEach(b=>b.classList.remove('playing'));
-      document.querySelectorAll('.play-btn').forEach(b=>{
-        if(b.dataset.slug===slug) { b.classList.add('playing'); b.querySelector('.play-icon').textContent='⏸'; }
-        else { b.querySelector('.play-icon').textContent='▶'; }
-      });
-      audio.play();
+      document.querySelectorAll('.ep-text.open').forEach(t => t.classList.remove('open'));
+      textDiv.classList.add('open');
+      if(!textDiv.dataset.loaded){
+        textDiv.innerHTML = '<p class="loading">加载文稿...</p>';
+        fetch(slug + '/podcast.md').then(r=>r.text()).then(md=>{
+          textDiv.dataset.loaded = '1';
+          textDiv.innerHTML = mdToHtml(md);
+        }).catch(()=>{ textDiv.innerHTML = '<p class="loading">加载失败，请点"读全文"查看</p>'; });
+      }
     });
   });
 
-  playBtn.addEventListener('click', () => {
-    if (audio.paused) audio.play(); else audio.pause();
-  });
+  function mdToHtml(md){
+    return md.split('\n').map(line => {
+      if(line.startsWith('### ')) return '<h3>'+line.slice(4)+'</h3>';
+      if(line.startsWith('## ')) return '<h2>'+line.slice(3)+'</h2>';
+      if(line.startsWith('# ')) return '<h1>'+line.slice(2)+'</h1>';
+      if(line.startsWith('> ')) return '<p style="color:var(--muted)">'+line.slice(2)+'</p>';
+      if(line.trim()==='') return '';
+      return '<p>'+line+'</p>';
+    }).join('\n');
+  }
 
+  spPlay.addEventListener('click', () => {
+    if(audio.paused) audio.play(); else audio.pause();
+  });
+  spPrev.addEventListener('click', playPrev);
+  spNext.addEventListener('click', playNext);
   spClose.addEventListener('click', () => {
-    audio.pause(); audio.currentTime=0;
-    player.classList.remove('show');
-    document.querySelectorAll('.play-btn').forEach(b=>{
-      b.classList.remove('playing'); b.querySelector('.play-icon').textContent='▶';
-    });
+    audio.pause(); audio.currentTime=0; player.classList.remove('show');
+    document.querySelectorAll('.episode').forEach(el=>el.classList.remove('playing'));
+    document.querySelectorAll('.play-btn').forEach(b=>b.classList.remove('playing'));
     currentSlug = null;
   });
+  spLoop.addEventListener('click', () => {
+    loop = !loop;
+    spLoop.classList.toggle('on', loop);
+    spLoop.title = loop ? '单曲循环:开' : '单曲循环:关';
+  });
 
-  audio.addEventListener('play', () => { playBtn.textContent='⏸'; });
-  audio.addEventListener('pause', () => { playBtn.textContent='▶'; });
+  audio.addEventListener('play', () => { spPlay.innerHTML = '\u23F8'; });
+  audio.addEventListener('pause', () => { spPlay.innerHTML = '\u25B6'; });
+  audio.addEventListener('ended', () => { playNext(); });
   audio.addEventListener('timeupdate', () => {
-    if (audio.duration) {
+    if(audio.duration){
       spBar.style.width = (audio.currentTime/audio.duration*100) + '%';
       spTime.textContent = fmt(audio.currentTime) + ' / ' + fmt(audio.duration);
     }
   });
+  spProgress.addEventListener('click', (e) => {
+    if(audio.duration){
+      const rect = spProgress.getBoundingClientRect();
+      audio.currentTime = (e.clientX - rect.left) / rect.width * audio.duration;
+    }
+  });
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.getElementById('episodes-panel').style.display = tab==='episodes' ? '' : 'none';
+      document.getElementById('queue-panel').classList.toggle('active', tab==='queue');
+    });
+  });
+
+  updateQueueUI();
 })();
 </script>
 </body>
