@@ -268,7 +268,7 @@ async def synth_all(segments: list[str], seg_dir: Path, provider: TTSProvider,
 
 
 def concat_segments(seg_paths: list[Path], out_mp3: Path, gap_seconds: float,
-                    bitrate: str = "128k") -> None:
+                    bitrate: str = "64k") -> None:
     out_mp3.parent.mkdir(parents=True, exist_ok=True)
     if not seg_paths:
         raise SystemExit("no segments to concat")
@@ -312,7 +312,7 @@ def main() -> None:
     ap.add_argument("--rate", default=None, help="override rate, e.g. +8%")
     ap.add_argument("--gap", type=float, default=None, help="silence seconds between segments")
     ap.add_argument("--config", default=None, help="path to tts_config.yaml")
-    ap.add_argument("--bitrate", default="128k", help="output mp3 bitrate")
+    ap.add_argument("--bitrate", default="64k", help="output mp3 bitrate")
     args = ap.parse_args()
 
     slug_dir = Path(args.slug_dir).resolve()
